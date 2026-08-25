@@ -191,6 +191,10 @@ $DRIVERS_DIR = if ($env:DRIVERS_DIR) { $env:DRIVERS_DIR }      else { "https://g
 $IMAGE_INDEX = if ($env:IMAGE_INDEX) { [int]$env:IMAGE_INDEX } else { 0 }       # 0 = list editions and prompt
 $DISK_MB     = if ($env:DISK_SIZE_MB){ [int]$env:DISK_SIZE_MB }else { 40960 }
 $OUT_QCOW    = if ($env:OUT_QCOW)    { $env:OUT_QCOW }         else { Join-Path $ROOT "win11-droidvm-final.qcow2" }
+# Optional: also pack a ready-to-import .vmpkg (qcow2 + local VM config baked in). Needs python. See repo README.
+$OUT_VMPKG   = if ($env:OUT_VMPKG)   { $env:OUT_VMPKG }        else { "" }
+$VMS_JSON    = if ($env:VMS_JSON)    { $env:VMS_JSON }         else { Join-Path $ROOT "vms.json" }
+$VMPKG_COMPRESSION = if ($env:VMPKG_COMPRESSION) { $env:VMPKG_COMPRESSION } else { "gzip" }
 $COMPRESS    = if ($env:COMPRESS)    { $env:COMPRESS }         else { "" }         # non-empty = -c compress the qcow2 (see step 9)
 $LETTER_ESP  = if ($env:LETTER_ESP)  { $env:LETTER_ESP }       else { Get-FreeDriveLetter }
 $LETTER_WIN  = if ($env:LETTER_WIN)  { $env:LETTER_WIN }       else { Get-FreeDriveLetter @($LETTER_ESP) }
@@ -199,6 +203,15 @@ $LETTER_WIN  = if ($env:LETTER_WIN)  { $env:LETTER_WIN }       else { Get-FreeDr
 $DRIVER_DIR     = if ($env:DRIVER_DIR)     { $env:DRIVER_DIR }     else { "ZIP/drivers" }
 $DRIVER_INSTALL = if ($env:DRIVER_INSTALL) { $env:DRIVER_INSTALL } else { "" }
 $DRIVER_CERT    = if ($env:DRIVER_CERT)    { $env:DRIVER_CERT }    else { "" }
+# EMS/SAC (Emergency Management Services): the interactive SAC> console needs the "EMS and SAC Toolset"
+# Feature-on-Demand (sacdrv.sys/sacsess.exe/sacsvr) which the LTSC/Pro ARM64 image does NOT ship. Set
+# FOD_SOURCE to the matching-build ARM64 FoD ISO mount or its extracted folder to inject it OFFLINE
+# (deterministic, recommended). If unset, the build still arms BCD EMS (boot-time serial text works),
+# and — only when EMS_SAC_ONLINE is non-empty — a first-boot script tries to pull the FoD from Windows
+# Update (needs network + a reboot). Leave both empty to ship boot-EMS only, no interactive SAC.
+$FOD_SOURCE      = if ($env:FOD_SOURCE)      { $env:FOD_SOURCE }      else { "" }
+$EMS_SAC_ONLINE  = if ($env:EMS_SAC_ONLINE)  { $env:EMS_SAC_ONLINE }  else { "" }
+$EMS_SAC_CAP     = 'Windows.Desktop.EMS-SAC.Tools~~~~0.0.1.0'
 # Account name. Use $env:DVM_USERNAME (not the built-in Windows $env:USERNAME = the current logged-in user). Unset -> USER.
 $USERNAME     = if ($env:DVM_USERNAME) { $env:DVM_USERNAME } else { "USER" }
 # Account password: network logon for RDP/SSH does not accept a blank password (Windows default LimitBlankPasswordUse=1). Use $env:DVM_PASSWORD
@@ -343,6 +356,30 @@ exit
         Write-Host "[certs] auto-extracted $($seenThumb.Count) cert(s) from driver .cat -> $certDir"
     }
 
+    # === 5c) EMS-SAC Feature-on-Demand (offline, for the interactive SAC> console) ===
+    # The ARM64 LTSC/Pro image ships no SAC runtime; the "EMS and SAC Toolset" FoD provides
+    # sacdrv.sys + sacsess.exe + the sacsvr service. Inject it offline from FOD_SOURCE (the
+    # matching-build ARM64 FoD ISO mount or its extracted folder). Done BEFORE ResetBase so the
+    # capability folds into the reset component base. If FOD_SOURCE is unset we DON'T fail the
+    # build: BCD EMS (step 7b) still gives boot-time serial text, and the first-boot fallback
+    # (staged below, step 8d) can pull it from Windows Update when EMS_SAC_ONLINE is requested.
+    $emsSacInjected = $false
+    if ($FOD_SOURCE) {
+        $fodSrc = Resolve-InputFile $FOD_SOURCE
+        Write-Host "[ems-sac] injecting FoD offline from $fodSrc ..."
+        try {
+            Invoke-ExternalCommand -FilePath "dism" -ArgumentList @("/Image:$W\", "/Add-Capability", "/CapabilityName:$EMS_SAC_CAP", "/Source:$fodSrc", "/LimitAccess") -OutNull -What "dism /Add-Capability EMS-SAC"
+            $emsSacInjected = $true
+            Write-Host "[ems-sac] FoD injected offline (SAC runtime present in image)" -ForegroundColor Green
+        } catch {
+            Write-Host "  [warn] offline FoD injection failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+            Write-Host "  [warn] check FOD_SOURCE points at the ARM64 FoD ISO/folder matching the image build" -ForegroundColor DarkYellow
+        }
+    } else {
+        Write-Host "[ems-sac] FOD_SOURCE unset: shipping boot-EMS only (no interactive SAC runtime)." -ForegroundColor DarkYellow
+        if ($EMS_SAC_ONLINE) { Write-Host "[ems-sac] EMS_SAC_ONLINE set: first boot will try to pull the FoD from Windows Update." -ForegroundColor DarkYellow }
+    }
+
     # === 6) Debloat (offline removal of provisioned Appx) ===
     Write-Host "[debloat] removing extra provisioned Appx offline ..."
     $keep = 'VCLibs|NET\.Native|UI\.Xaml|Store|SecHealth|Photos|Notepad|Terminal|WindowsTerminal'
@@ -428,6 +465,18 @@ exit
     Invoke-ExternalCommand -FilePath "bcdedit" -ArgumentList @("/store", $BCD, "/set", "{default}", "testsigning", "on") -OutNull -What "bcdedit testsigning"
     Invoke-ExternalCommand -FilePath "bcdedit" -ArgumentList @("/store", $BCD, "/set", "{default}", "nointegritychecks", "on") -OutNull -What "bcdedit nointegritychecks"
 
+    # === 7b) Emergency Management Services (EMS/SAC over the SBSA UART) ===
+    # Turns the guest into an out-of-band serial console (SAC> prompt) on the app's SBSA
+    # port. On ARM64 there is no legacy I/O COM numbering, so EMS pulls the port/baud from
+    # the ACPI SPCR table (edk2 synthesizes SPCR from the SBSA UART FDT node) -> "/emssettings
+    # BIOS" is the correct mode here, NOT EMSPORT:n. This only arms the loader/kernel; the
+    # interactive SAC runtime (sacdrv.sys/sacsess.exe/sacsvr) is a separate Feature-on-Demand
+    # injected in step 8d. For SAC to actually attach, the VM must launch with an SBSA serial
+    # port marked as the guest console (crosvm stdout-path -> SPCR); see windows/README.md.
+    Invoke-ExternalCommand -FilePath "bcdedit" -ArgumentList @("/store", $BCD, "/emssettings", "BIOS") -OutNull -What "bcdedit emssettings BIOS"
+    Invoke-ExternalCommand -FilePath "bcdedit" -ArgumentList @("/store", $BCD, "/ems", "{default}", "on") -OutNull -What "bcdedit ems {default} on"
+    Invoke-ExternalCommand -FilePath "bcdedit" -ArgumentList @("/store", $BCD, "/bootems", "{bootmgr}", "on") -OutNull -What "bcdedit bootems {bootmgr} on"
+
     # === 8) OOBE unattend (create USER / autologon) ===
     Show-CommandLine "New-Item" @("-ItemType", "Directory", "-Force", "$W\Windows\Panther")
     New-Item -ItemType Directory -Force "$W\Windows\Panther" | Out-Null
@@ -471,6 +520,19 @@ exit
         Write-Host "[ssh] `$SSH_PUBKEY not set -> password login only" -ForegroundColor DarkYellow
     }
 
+    # === 8d) Stage EMS-SAC first-boot fallback (online FoD install) ===
+    # setup-ems-sac.ps1 self-gates: it exits immediately if the FoD is already Installed (the
+    # offline path in 5c succeeded). It only tries an online Windows-Update install when the
+    # marker file ems-sac-online.flag is present, which we write only when EMS_SAC_ONLINE is set
+    # AND the offline injection did not already happen. This keeps offline/air-gapped builds fully
+    # deterministic while still offering a one-touch online path for users without a FoD ISO.
+    Copy-Item (Join-Path $HERE "setup-ems-sac.ps1") "$stage\setup-ems-sac.ps1" -Force
+    Write-Host "[ems-sac] staged setup-ems-sac.ps1 (first-boot FoD ensure)"
+    if ($EMS_SAC_ONLINE -and -not $emsSacInjected) {
+        [System.IO.File]::WriteAllText("$stage\ems-sac-online.flag", $EMS_SAC_CAP, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "[ems-sac] armed online first-boot FoD install (EMS_SAC_ONLINE)" -ForegroundColor Yellow
+    }
+
     # === 8b) ReTrim so debloat/cleanup actually shrinks the image ===
     # Mirrors macOS's Optimize-Volume -ReTrim: unmaps the clusters freed above by debloat/ResetBase.
     # Otherwise, although that space is marked free in NTFS, the VHDX still holds the old data (non-zero),
@@ -495,6 +557,24 @@ exit
     Invoke-ExternalCommand -FilePath "qemu-img" -ArgumentList $convArgs -What "qemu-img convert"
     $sz = "{0:N1} GB" -f ((Get-Item $OUT_QCOW).Length / 1GB)
     Write-Host "Done  -> $OUT_QCOW ($sz)" -ForegroundColor Green
+
+    # === 10) Optional: pack a ready-to-import .vmpkg (qcow2 + local VM config incl. SBSA console) ===
+    if ($OUT_VMPKG) {
+        $py = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }
+        if (-not $py) {
+            Write-Host "[vmpkg] python not found -> skipping .vmpkg (qcow2 is ready)" -ForegroundColor DarkYellow
+        } elseif ($COMPRESS) {
+            Write-Host "[vmpkg] refusing: COMPRESS makes a -c qcow2 crosvm can't read after extraction. Build the vmpkg from an uncompressed qcow2 (clear COMPRESS)." -ForegroundColor DarkYellow
+        } else {
+            Write-Host "[vmpkg] packing $OUT_VMPKG ..."
+            Invoke-ExternalCommand -FilePath $py.Source -ArgumentList @(
+                (Join-Path $ROOT "pack-vmpkg.py"), "--qcow2", $OUT_QCOW, "--config", $VMS_JSON,
+                "--out", $OUT_VMPKG, "--compression", $VMPKG_COMPRESSION
+            ) -What "pack-vmpkg"
+            Write-Host "[vmpkg] Done  -> $OUT_VMPKG" -ForegroundColor Green
+        }
+    }
 }
 finally {
     Cleanup

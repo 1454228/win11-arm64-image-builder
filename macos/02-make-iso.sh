@@ -26,8 +26,12 @@ USERNAME="${USERNAME:-USER}"           # account name (injected into autounatten
 PASSWORD="${PASSWORD:-}"               # password (injected into autounattend; empty=no password)
 SSH_PUBKEY="${SSH_PUBKEY:-}"           # SSH public key (written to C:\DroidVM\authorized_keys; empty=do not deploy key)
 OPENSSH_SRC="${OPENSSH_SRC:-}"         # resolved OpenSSH installer path (empty=do not install SSH)
+EMS_SAC_ONLINE="${EMS_SAC_ONLINE:-}"   # non-empty = arm target-side online install of the EMS-SAC FoD (interactive SAC>).
+                                       # BCD EMS is always baked into the image; this only controls the SAC runtime FoD.
+                                       # Route B has no offline FoD path (build host is not Windows), so it installs on
+                                       # the target's first boot from Windows Update (needs target network + one reboot).
 
-for f in "$SRC_ISO" "$BCD_PATCHED" "$BCD_TEMPLATE" "$HERE/autounattend.xml" "$HERE/gunyah-oobe.xml" "$HERE/debloat.ps1" "$HERE/setup-ssh.ps1"; do
+for f in "$SRC_ISO" "$BCD_PATCHED" "$BCD_TEMPLATE" "$HERE/autounattend.xml" "$HERE/gunyah-oobe.xml" "$HERE/debloat.ps1" "$HERE/setup-ssh.ps1" "$HERE/setup-ems-sac.ps1"; do
   [ -e "$f" ] || { echo "Missing: $f"; exit 1; }
 done
 [ -d "$DRIVER_DIR" ] || { echo "Missing driver folder: $DRIVER_DIR"; exit 1; }
@@ -95,6 +99,19 @@ fi
 if [ -n "$SSH_PUBKEY" ]; then
   printf '%s\n' "$SSH_PUBKEY" > "$WORK/OEM/DroidVM/authorized_keys"
   echo "[ssh] staged authorized_keys"
+fi
+
+# EMS-SAC FoD: always stage the ensure-script (it self-gates). Route B installs the interactive
+# SAC runtime at BUILD TIME inside the qemu build VM (autounattend.xml Order 16, -NoReboot; the
+# VM has NAT internet via -netdev user), baking it into the image (InstallPending). The target
+# then applies it from the local component store on first boot with NO network. Armed only via
+# EMS_SAC_ONLINE. The BCD EMS itself is baked in regardless (boot-time serial text always works).
+cp "$HERE/setup-ems-sac.ps1" "$WORK/OEM/DroidVM/setup-ems-sac.ps1"
+if [ -n "$EMS_SAC_ONLINE" ]; then
+  printf 'Windows.Desktop.EMS-SAC.Tools~~~~0.0.1.0' > "$WORK/OEM/DroidVM/ems-sac-online.flag"
+  echo "[ems-sac] staged setup-ems-sac.ps1 + armed BUILD-TIME FoD bake (target needs no network)"
+else
+  echo "[ems-sac] staged setup-ems-sac.ps1 (boot-EMS only; set EMS_SAC_ONLINE=1 to bake in the SAC runtime)"
 fi
 
 # Copy only the drivers selected for install (DRIVER_INSTALL empty=all) to $OEM$ -> C:\DroidVM\drivers

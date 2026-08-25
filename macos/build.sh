@@ -108,9 +108,11 @@ PASSWORD="${PASSWORD:-}"
 SSH_PUBKEY="${SSH_PUBKEY:-}"
 OPENSSH_SRC="${OPENSSH_SRC:-}"
 [ -n "$OPENSSH_SRC" ] && OPENSSH_SRC="$(resolve_file "$OPENSSH_SRC")"
+# EMS-SAC: non-empty arms the target-side online install of the interactive SAC runtime FoD (see 02-make-iso.sh).
+EMS_SAC_ONLINE="${EMS_SAC_ONLINE:-}"
 
 export SRC_ISO IMAGE_INDEX DRIVER_DIR DRIVER_INSTALL DRIVER_CERT BCD_PATCHED BCD_TEMPLATE \
-       USERNAME PASSWORD SSH_PUBKEY OPENSSH_SRC FILES
+       USERNAME PASSWORD SSH_PUBKEY OPENSSH_SRC FILES EMS_SAC_ONLINE
 
 echo "[build] === 2/4 pack install ISO ==="
 bash "$HERE/02-make-iso.sh"
@@ -128,6 +130,25 @@ COMPRESS_FLAG=""; [ -n "${COMPRESS:-}" ] && COMPRESS_FLAG="-c"
 qemu-img convert $COMPRESS_FLAG -O qcow2 "$FILES/win11-droidvm.qcow2" "$OUT_QCOW"
 sz=$(ls -lh "$OUT_QCOW" | awk '{print $5}')
 echo "[build] done ✅  -> $OUT_QCOW ($sz)"
+
+# Optional: pack a ready-to-import .vmpkg (qcow2 + local VM config baked in, incl. the SBSA
+# console for SAC). Device-less, offline; needs python3. vms.json (repo root) is the config
+# source; edit it to tune RAM/swiotlb/serial/etc. (see repo README "vmpkg / vms.json").
+if [ -n "${OUT_VMPKG:-}" ]; then
+  ROOT="$(cd "$HERE/.." && pwd)"
+  VMS_JSON="${VMS_JSON:-$ROOT/vms.json}"
+  VMPKG_COMPRESSION="${VMPKG_COMPRESSION:-gzip}"
+  echo "[build] === 5/5 pack vmpkg ==="
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[vmpkg] python3 not found -> skipping .vmpkg (qcow2 is ready)"
+  elif [ -n "${COMPRESS:-}" ]; then
+    echo "[vmpkg] refusing: COMPRESS=1 makes a -c qcow2 crosvm can't read after extraction. Build the vmpkg from an uncompressed qcow2 (unset COMPRESS)."
+  else
+    python3 "$ROOT/pack-vmpkg.py" --qcow2 "$OUT_QCOW" --config "$VMS_JSON" \
+      --out "$OUT_VMPKG" --compression "$VMPKG_COMPRESSION"
+    echo "[build] vmpkg ✅  -> $OUT_VMPKG"
+  fi
+fi
 
 # Wrap-up: delete large intermediate files (working qcow2 ~8G, setup ISO ~5G) to reclaim space for the Mac; download caches (files/patches,
 # drivers, msi) are kept. Set KEEP_WORK=1 to keep intermediate files for debugging.

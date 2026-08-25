@@ -41,6 +41,17 @@
           <Order>3</Order>
           <Path>cmd /c for %i in (C:\DroidVM\certs\*.cer) do certutil -addstore -f TrustedPublisher "%i"</Path>
         </RunSynchronousCommand>
+        <!-- IPv6 介面識別碼用 EUI-64（從 MAC 推導）：Win10/11 預設是 RFC 7217 隨機 IID + RFC 4941
+             臨時位址，SLAAC 位址每台/每次都不同，沒法從 MAC 推地址。兩個都關掉：
+               randomizeidentifiers=disabled -> 穩定 IID 改回 EUI-64
+               privacy state=disabled        -> 不再產生 temporary 位址（否則對外連線會優先用它）
+             放在 specialize（比 FirstLogon 早很多）盡量趕在第一個 RA 之前；FirstLogon 還會再補一次
+             並重啟網卡，確保這次開機就拿到 EUI-64 位址。結尾 exit /b 0：specialize 的
+             RunSynchronousCommand 傳回非 0 會中止 Setup，不讓網路設定失敗連累裝機。 -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>cmd /c netsh interface ipv6 set global randomizeidentifiers=disabled &amp; netsh interface ipv6 set privacy state=disabled &amp; exit /b 0</Path>
+        </RunSynchronousCommand>
       </RunSynchronous>
     </component>
   </settings>
@@ -95,6 +106,25 @@
           <Order>5</Order><Description>power: never sleep / never turn off display</Description>
           <CommandLine>cmd /c powercfg /change standby-timeout-ac 0 &amp; powercfg /change standby-timeout-dc 0 &amp; powercfg /change monitor-timeout-ac 0 &amp; powercfg /change monitor-timeout-dc 0</CommandLine>
         </SynchronousCommand>
+        <!-- 密碼永不過期：本機預設 MaxPasswordAge=42 天，到期後登入會被要求改密碼、RDP/SSH 也會被擋。
+             qemu 端已設過一次，這裡在目標端冪等重設，避免 generalize/OOBE 重跑把原則打回預設。 -->
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order><Description>password policy: never expire</Description>
+          <CommandLine>cmd /c net accounts /maxpwage:unlimited</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>7</Order><Description>account flag: password never expires</Description>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-LocalUser -Name '@@USERNAME@@' -PasswordNeverExpires $true"</CommandLine>
+        </SynchronousCommand>
+        <!-- 補設一次並重啟已連線的網卡：specialize 時若已收到 RA，隨機 IID 的位址會留著，
+             flap 一下讓 SLAAC 重跑，這次開機就是 EUI-64 位址（不用等下次重開機）。 -->
+        <SynchronousCommand wcm:action="add">
+          <Order>8</Order><Description>IPv6 SLAAC: EUI-64 interface identifier</Description>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "netsh interface ipv6 set global randomizeidentifiers=disabled; netsh interface ipv6 set privacy state=disabled; Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' } | Restart-NetAdapter -Confirm:$false"</CommandLine>
+        </SynchronousCommand>
+        <!-- 註：EMS-SAC 工具集（互動式 SAC> 執行期 FoD）在 Route B 是「構建期」就於 qemu 建置 VM 內下載並烙進
+             映像（autounattend.xml，qemu 有 NAT 上網），成品以 InstallPending 出貨，目標端首次開機從本機
+             元件庫套用、不需連網。故此處目標端 OOBE 不再做線上安裝。BCD EMS 也已烙進 ESP BCD。 -->
       </FirstLogonCommands>
     </component>
 

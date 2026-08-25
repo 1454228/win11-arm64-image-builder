@@ -19,11 +19,13 @@ export OPENSSH_SRC="https://github.com/PowerShell/Win32-OpenSSH/releases/downloa
 export DISK_SIZE="40G"
 export OUT_QCOW="$HERE/macos/win11-droidvm-final.qcow2"
 # export COMPRESS=1   # ship a compressed qcow2 (crosvm can't read it directly; DroidVM import/pre-flight decompresses)
+# export OUT_VMPKG="$HERE/macos/win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; needs python3, keep COMPRESS off)
+# export EMS_SAC_ONLINE=1   # bake the EMS-SAC toolset (interactive SAC>) in at build time from Windows Update (qemu VM has NAT internet)
 
 export BACKGROUND=false
 
 export DRIVER_DIR="ZIP/drivers"                            # Directory containing each driver subfolder
-export DRIVER_INSTALL="NetKVM rdmapool pvmpower vioinput viostor vioscsi"   # Install only these (empty = all)
+export DRIVER_INSTALL="NetKVM rdmapool pvmpower vioinput viostor vioscsi viosnd viofs"   # Install only these (empty = all); viosnd=virtio-sound, viofs=virtio-fs (non-boot)
 export DRIVER_CERT="ZIP/DroidVM_Test.cer"                  # Signing certificate to use (empty = auto-extract from .cat)
 
 "$HERE/macos/build.sh"

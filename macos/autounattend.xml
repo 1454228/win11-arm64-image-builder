@@ -204,6 +204,17 @@
           <Order>10</Order><Description>debloat</Description>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -File C:\DroidVM\debloat.ps1</CommandLine>
         </SynchronousCommand>
+        <!-- 密碼永不過期：本機預設 MaxPasswordAge=42 天，到期後登入會被要求改密碼、RDP/SSH 也會被擋。
+             兩層都關：機器層密碼原則（涵蓋日後新建帳號）+ 帳號層 PasswordNeverExpires 旗標（涵蓋 USER）。
+             設在 generalize 之前，讓成品映像自帶；目標端 gunyah-oobe.xml 會再冪等重設一次。 -->
+        <SynchronousCommand wcm:action="add">
+          <Order>11</Order><Description>password policy: never expire</Description>
+          <CommandLine>cmd /c net accounts /maxpwage:unlimited</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>12</Order><Description>account flag: password never expires</Description>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-LocalUser -Name '@@USERNAME@@' -PasswordNeverExpires $true"</CommandLine>
+        </SynchronousCommand>
         <!-- 收尾：sysprep /generalize 把映像打回「OOBE-pending、無 baked 裝置樹」的可部署狀態，位元語意等同 route A（DISM）產物。
              為何非做不可：上面 pnputil 是在「沒有 ACPI\RDMA0000 的 qemu VM」裡裝驅動，做出的映像已 specialize 成 qemu 硬體
              （baked 了上千個 Enum 裝置實例、OOBE 已完成）。這種映像搬到 Gunyah 是「第二次開機」，只把 cache 內的 boot device
@@ -214,8 +225,33 @@
              （gunyah-oobe.xml：靜默 OOBE + autologon + 重建 pvmpower devnode，其餘都靠上面已 baked 的成果）。
              /shutdown -> qemu 乾淨退出 = qcow2 成品就緒。失敗會停在此步（不 fallback 關機，以免誤出未 generalize 的壞映像）；
              如卡住檢查 C:\Windows\System32\Sysprep\Panther\setuperr.log（常見為 appx 驗證，debloat 已用 provisioned+AllUsers 併移緩解）。 -->
+        <!-- EMS/SAC：把成品的 ESP BCD 設成序列 out-of-band 主控台。ARM64 無 legacy I/O COM，EMS 要從 ACPI
+             SPCR 讀埠/鮑率（edk2 由 SBSA UART 的 FDT 節點生 SPCR）→ 用 emssettings BIOS，不是 EMSPORT:n。
+             這裡只武裝 loader/kernel；互動式 SAC 執行期（sacdrv.sys/sacsess.exe/sacsvr）是另一個 FoD，
+             由目標端 gunyah-oobe.xml 的 setup-ems-sac.ps1 於首開機安裝。設在 generalize 前 → 成品自帶。
+             SAC 要真的接上，VM 啟動時要有一個 SBSA 序列埠設為 guest 主控台（crosvm stdout-path→SPCR）。 -->
         <SynchronousCommand wcm:action="add">
-          <Order>11</Order><Description>sysprep generalize (defer hardware detect to Gunyah)</Description>
+          <Order>13</Order><Description>EMS: emssettings BIOS (SPCR)</Description>
+          <CommandLine>cmd /c bcdedit /emssettings BIOS</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>14</Order><Description>EMS: ems on (OS loader)</Description>
+          <CommandLine>cmd /c bcdedit /ems "{default}" on</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>15</Order><Description>EMS: bootems on (boot manager)</Description>
+          <CommandLine>cmd /c bcdedit /bootems "{bootmgr}" on</CommandLine>
+        </SynchronousCommand>
+        <!-- EMS-SAC 執行期 FoD：在「構建期」的 qemu 建置 VM 內下載並烙進映像（qemu -netdev user 有 NAT 上網）。
+             -NoReboot：不重開機，成品以 InstallPending 出貨，目標端首次開機從本機元件庫套用、不需連網。
+             設在 debloat（含 WU 停用 + ResetBase）之後，避免 ResetBase 動到剛落地的 FoD；腳本會臨時開回 WU。
+             僅在 02-make-iso.sh 放了 ems-sac-online.flag（EMS_SAC_ONLINE=1）時才實際安裝，否則 no-op。 -->
+        <SynchronousCommand wcm:action="add">
+          <Order>16</Order><Description>build-time: bake EMS-SAC FoD (no reboot)</Description>
+          <CommandLine>cmd /c if exist C:\DroidVM\setup-ems-sac.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File C:\DroidVM\setup-ems-sac.ps1 -NoReboot</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>17</Order><Description>sysprep generalize (defer hardware detect to Gunyah)</Description>
           <CommandLine>cmd /c %WINDIR%\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /unattend:C:\DroidVM\gunyah-oobe.xml</CommandLine>
         </SynchronousCommand>
       </FirstLogonCommands>

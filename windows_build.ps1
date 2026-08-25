@@ -20,9 +20,12 @@ $env:DVM_PASSWORD = "DroidVM"     # Password (an empty password blocks RDP/SSH n
 $env:SSH_PUBKEY  = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA root@ReplaceMe"
 $env:DISK_SIZE_MB = "40960"
 # $env:COMPRESS = "1"   # ship a compressed qcow2 (crosvm can't read it directly; DroidVM import/pre-flight decompresses)
+# $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; needs python, keep COMPRESS off)
+# $env:FOD_SOURCE = "E:\"   # ARM64 EMS-SAC FoD ISO mount -> offline-inject the interactive SAC> runtime (zero network)
+# $env:EMS_SAC_ONLINE = "1"   # no FoD ISO: install the SAC runtime online on the TARGET's first boot instead
 
 $env:DRIVER_DIR     = "ZIP/drivers"                                       # Directory containing each driver subfolder
-$env:DRIVER_INSTALL = "NetKVM rdmapool pvmpower vioinput viostor vioscsi" # Install only these (empty = all); must include the viostor/vioscsi boot drivers
+$env:DRIVER_INSTALL = "NetKVM rdmapool pvmpower vioinput viostor vioscsi viosnd viofs" # Install only these (empty = all); must include the viostor/vioscsi boot drivers. viosnd=virtio-sound, viofs=virtio-fs (non-boot)
 $env:DRIVER_CERT    = "ZIP/DroidVM_Test.cer"                              # Specify signing certificate (empty = auto-extract from .cat)
 
 $env:OPENSSH_SRC = "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64-v10.0.0.0.msi"

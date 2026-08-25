@@ -1,0 +1,41 @@
+{
+  "name": "Windows 11 ARM64 (DroidVM)",
+  "backend": "crosvm",
+  "hypervisor": "auto",
+  "protected_vm": "protected_without_firmware",
+
+  "memory_mb": 3072,
+  "swiotlb_mb": 256,
+  "cpu_count": 4,
+  "cpu_topology_auto": true,
+  "smt": true,
+  "pmu": true,
+
+  "hugepages": true,
+  "prepare_lend_mthp": "chunked",
+  "gunyah_dynamic_share": false,
+
+  "usb": true,
+  "balloon": false,
+  "rng": true,
+
+  "display_enabled": true,
+  "native_display_enabled": true,
+  "display_backend": "simplefb",
+  "display_width": 1280,
+  "display_height": 720,
+  "display_blit_provider": "TURNIP",
+  "gpu_enabled": false,
+  "vnc_enabled": false,
+  "auto_up": false,
+
+  "serial_ports": [
+    { "hardware": "serial", "num": 1, "backend": "app_console", "console": false, "fixed": true },
+    { "hardware": "serial", "num": 2, "backend": "sink",        "console": false, "fixed": true },
+    { "hardware": "serial", "num": 3, "backend": "sink",        "console": false, "fixed": true },
+    { "hardware": "serial", "num": 4, "backend": "sink",        "console": false, "fixed": true },
+    { "hardware": "sbsa",   "num": 1, "backend": "app_console", "console": true,  "usb_slot": 0 }
+  ],
+
+  "boot": { "protocol": "uefi", "uefi": { "vars_enabled": true, "vars": "", "firmware": "" } }
+}

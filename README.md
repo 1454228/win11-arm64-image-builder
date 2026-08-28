@@ -77,11 +77,16 @@ SAC 走 ACPI SPCR,SPCR 由 edk2 依 crosvm 傳入的 SBSA UART FDT 節點生成,
 設 `OUT_VMPKG` 就會在 qcow2 之外**再吐一顆可直接匯入的 `.vmpkg`**,把 VM 設定(RAM / swiotlb / SBSA 主控台 / boot)一起烙進封裝 —— app 匯入即帶好設定,開箱即用、免手動、免每次跑 app 的 import→export。
 
 - **設定來源 = 本地 `vms.json`**(repo 根目錄,本地維護一份)。改它即可調 RAM / CPU / swiotlb / 序列埠等;packager 會自動把 qcow2 補成頂層 disk 條目。預設已放 `memory_mb=3072`、`swiotlb_mb=256`、`serial_ports` 含 SBSA 主控台(SAC)+ COM sink、UEFI boot。
-- **打包器 = `pack-vmpkg.py`**(純 Python 3 stdlib,無外部相依;gzip(GNU-tar) 容器,byte-exact 對齊 app 的 `PackageHeader`/`VMExportTask`)。可獨立執行:
-  ```bash
-  python3 pack-vmpkg.py --qcow2 out.qcow2 --config vms.json --out win11.vmpkg
-  ```
-- 需 `python3`(macOS 內建;Windows 需自行安裝,否則該步驟略過、qcow2 照常產出)。且 vmpkg 要用**未壓縮**的 qcow2(勿開 `COMPRESS`,否則 crosvm 解開後讀不了 `-c` 叢集)。
+- **打包器**:兩份等價實作,容器 byte-exact 對齊 app 的 `PackageHeader`/`VMExportTask`(gzip(GNU-tar))。
+  - Windows 路線用 **`pack-vmpkg.ps1`**——純 PowerShell + 內建 `tar.exe`(Win10 1803+),**零額外相依,不需要 Python**:
+    ```powershell
+    .\pack-vmpkg.ps1 -Qcow2 out.qcow2 -Config vms.json -Out win11.vmpkg
+    ```
+  - macOS 路線用 **`pack-vmpkg.py`**(純 Python 3 stdlib,macOS 內建 python3):
+    ```bash
+    python3 pack-vmpkg.py --qcow2 out.qcow2 --config vms.json --out win11.vmpkg
+    ```
+- vmpkg 要用**未壓縮**的 qcow2(勿開 `COMPRESS`,否則 crosvm 解開後讀不了 `-c` 叢集)。
 
 > 相容性:`serial_ports` 是 app 新欄位。新版 app 讀它(自動帶上 SBSA 主控台);舊版 app 匯入會忽略它、靠 ensureDefaults 補 COM 四顆(只是少了 SBSA,不會壞)。
 

@@ -560,18 +560,13 @@ exit
 
     # === 10) Optional: pack a ready-to-import .vmpkg (qcow2 + local VM config incl. SBSA console) ===
     if ($OUT_VMPKG) {
-        $py = Get-Command python -ErrorAction SilentlyContinue
-        if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }
-        if (-not $py) {
-            Write-Host "[vmpkg] python not found -> skipping .vmpkg (qcow2 is ready)" -ForegroundColor DarkYellow
-        } elseif ($COMPRESS) {
+        if ($COMPRESS) {
             Write-Host "[vmpkg] refusing: COMPRESS makes a -c qcow2 crosvm can't read after extraction. Build the vmpkg from an uncompressed qcow2 (clear COMPRESS)." -ForegroundColor DarkYellow
         } else {
             Write-Host "[vmpkg] packing $OUT_VMPKG ..."
-            Invoke-ExternalCommand -FilePath $py.Source -ArgumentList @(
-                (Join-Path $ROOT "pack-vmpkg.py"), "--qcow2", $OUT_QCOW, "--config", $VMS_JSON,
-                "--out", $OUT_VMPKG, "--compression", $VMPKG_COMPRESSION
-            ) -What "pack-vmpkg"
+            # Pure PowerShell + the built-in tar.exe (Windows 10 1803+): no python needed.
+            & (Join-Path $ROOT "pack-vmpkg.ps1") -Qcow2 $OUT_QCOW -Config $VMS_JSON `
+                -Out $OUT_VMPKG -Compression $VMPKG_COMPRESSION
             Write-Host "[vmpkg] Done  -> $OUT_VMPKG" -ForegroundColor Green
         }
     }

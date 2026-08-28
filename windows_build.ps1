@@ -20,7 +20,7 @@ $env:DVM_PASSWORD = "DroidVM"     # Password (an empty password blocks RDP/SSH n
 $env:SSH_PUBKEY  = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA root@ReplaceMe"
 $env:DISK_SIZE_MB = "40960"
 # $env:COMPRESS = "1"   # ship a compressed qcow2 (crosvm can't read it directly; DroidVM import/pre-flight decompresses)
-# $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; needs python, keep COMPRESS off)
+# $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; uses built-in tar.exe, keep COMPRESS off)
 # $env:FOD_SOURCE = "E:\"   # ARM64 EMS-SAC FoD ISO mount -> offline-inject the interactive SAC> runtime (zero network)
 # $env:EMS_SAC_ONLINE = "1"   # no FoD ISO: install the SAC runtime online on the TARGET's first boot instead
 

@@ -11,7 +11,11 @@ $ErrorActionPreference = 'Stop'
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell "-NoExit -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    # Relaunch elevated. UAC starts the child in System32 whatever the caller's directory was, so hand the
+    # current directory over on the command line and cd back to it before the script runs.
+    $cwd = (Get-Location).ProviderPath.Replace("'", "''")
+    $me = $PSCommandPath.Replace("'", "''")
+    Start-Process powershell "-NoExit -ExecutionPolicy Bypass -Command `"Set-Location -LiteralPath '$cwd'; & '$me'`"" -Verb RunAs
     exit
 }
 
@@ -24,8 +28,8 @@ $env:DVM_USERNAME = "USER"        # Name of the local administrator account to c
 $env:DVM_PASSWORD = "DroidVM"     # Password (an empty password blocks RDP/SSH network logins)
 $env:SSH_PUBKEY  = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA root@ReplaceMe"
 $env:DISK_SIZE_MB = "40960"
-# $env:COMPRESS = "1"   # ship a compressed qcow2 (crosvm can't read it directly; DroidVM import/pre-flight decompresses)
-# $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; uses built-in tar.exe, keep COMPRESS off)
+# $env:COMPRESS = "1"   # 1 = ship a qcow2 with zstd-compressed clusters (about half the size; needs the crosvm with qcow2 zstd read support); 0 or unset = off
+# $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; uses built-in tar.exe)
 # $env:VMPKG_COMPRESSION = "auto"   # auto (default) = zstd on all cores when tar.exe has libzstd (Win11), else single-threaded gzip; or zstd|gzip|none
 # $env:EMS_SAC_SOURCE = "skip"   # interactive SAC> runtime (EMS-SAC FoD): "skip" (default) = boot-EMS only, no SAC>; "online" = pulled from
 #                                #   Windows Update on the TARGET's first boot; "E:\" = ARM64 FoD ISO mount/folder -> injected offline (zero network)

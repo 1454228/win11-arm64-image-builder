@@ -38,8 +38,13 @@ function Show-CommandLine([string]$Command, [object[]]$Arguments = @()) {
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Administrator required, relaunching elevated..." -ForegroundColor Yellow
-    Show-CommandLine "Start-Process" @("powershell", "-ExecutionPolicy Bypass -File `"$PSCommandPath`"", "-Verb", "RunAs")
-    Start-Process powershell "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    # UAC starts the child in System32 whatever the caller's directory was: hand the current directory over
+    # on the command line and cd back to it before the script runs.
+    $cwd = (Get-Location).ProviderPath.Replace("'", "''")
+    $me = $PSCommandPath.Replace("'", "''")
+    $elevArgs = "-ExecutionPolicy Bypass -Command `"Set-Location -LiteralPath '$cwd'; & '$me'`""
+    Show-CommandLine "Start-Process" @("powershell", $elevArgs, "-Verb", "RunAs")
+    Start-Process powershell $elevArgs -Verb RunAs
     exit
 }
 
@@ -197,9 +202,13 @@ $OUT_QCOW    = if ($env:OUT_QCOW)    { $env:OUT_QCOW }         else { Join-Path 
 # (pure PowerShell + the built-in tar.exe). See repo README.
 $OUT_VMPKG   = if ($env:OUT_VMPKG)   { $env:OUT_VMPKG }        else { "" }
 $VMS_JSON    = if ($env:VMS_JSON)    { $env:VMS_JSON }         else { Join-Path $ROOT "vms.json" }
+# Relative output/config paths resolve against the repo root, not the elevated shell's CWD (system32).
+if (-not [IO.Path]::IsPathRooted($OUT_QCOW))                  { $OUT_QCOW  = Join-Path $ROOT $OUT_QCOW }
+if ($OUT_VMPKG -and -not [IO.Path]::IsPathRooted($OUT_VMPKG)) { $OUT_VMPKG = Join-Path $ROOT $OUT_VMPKG }
+if (-not [IO.Path]::IsPathRooted($VMS_JSON))                  { $VMS_JSON  = Join-Path $ROOT $VMS_JSON }
 $VMPKG_COMPRESSION = if ($env:VMPKG_COMPRESSION) { $env:VMPKG_COMPRESSION } else { "auto" }   # auto = zstd on all cores when tar.exe has libzstd (Win11), else gzip
 $VMPKG_THREADS = if ($env:VMPKG_THREADS) { [int]$env:VMPKG_THREADS } else { 0 }               # zstd threads, 0 = all
-$COMPRESS    = if ($env:COMPRESS)    { $env:COMPRESS }         else { "" }         # non-empty = -c compress the qcow2 (see step 9)
+$COMPRESS    = if ($env:COMPRESS -and $env:COMPRESS -notmatch '^(0|false|no|off)$') { $env:COMPRESS } else { "" }   # 1 = zstd-compress the qcow2 clusters (step 9); 0/false/no/off/unset = off
 $LETTER_ESP  = if ($env:LETTER_ESP)  { $env:LETTER_ESP }       else { Get-FreeDriveLetter }
 $LETTER_WIN  = if ($env:LETTER_WIN)  { $env:LETTER_WIN }       else { Get-FreeDriveLetter @($LETTER_ESP) }
 # Driver install list/cert (mirrors macOS): DRIVER_DIR=directory containing the per-driver subfolders (ZIP/ = driver zip extraction root);
@@ -556,11 +565,11 @@ exit
     # === 9) Detach VHDX -> convert to qcow2 ===
     Cleanup; $vhdAttached = $false; $isoMounted = $false
     Write-Host "[qcow2] converting -> $OUT_QCOW ..."
-    # $COMPRESS adds -c (zlib-compress the qcow2). crosvm CANNOT read compressed clusters -> only for shipping to a
-    # DroidVM import / pre-flight that decompresses first (DroidVM's pre-start guard also detects it and offers to
-    # convert); still bootable in plain qemu. Default off.
+    # $COMPRESS adds -c with compression_type=zstd (zstd-compressed clusters, roughly half the size). DroidVM's
+    # crosvm reads zstd clusters directly (its qcow2 backend gained zstd read support), so the image boots as-is;
+    # plain -c (zlib) it can NOT read, so that form is never emitted. Still bootable in plain qemu. Default off.
     $convArgs = @("convert", "-p")
-    if ($COMPRESS) { $convArgs += "-c" }
+    if ($COMPRESS) { $convArgs += @("-c", "-o", "compression_type=zstd") }
     $convArgs += @("-O", "qcow2", $VHDX, $OUT_QCOW)
     Invoke-ExternalCommand -FilePath "qemu-img" -ArgumentList $convArgs -What "qemu-img convert"
     $sz = "{0:N1} GB" -f ((Get-Item $OUT_QCOW).Length / 1GB)
@@ -568,15 +577,17 @@ exit
 
     # === 10) Optional: pack a ready-to-import .vmpkg (qcow2 + local VM config incl. SBSA console) ===
     if ($OUT_VMPKG) {
+        Write-Host "[vmpkg] packing $OUT_VMPKG ..."
+        $vmpkgComp = $VMPKG_COMPRESSION
         if ($COMPRESS) {
-            Write-Host "[vmpkg] refusing: COMPRESS makes a -c qcow2 crosvm can't read after extraction. Build the vmpkg from an uncompressed qcow2 (clear COMPRESS)." -ForegroundColor DarkYellow
-        } else {
-            Write-Host "[vmpkg] packing $OUT_VMPKG ..."
-            # Pure PowerShell + the built-in tar.exe (Windows 10 1803+): no python needed.
-            & (Join-Path $ROOT "pack-vmpkg.ps1") -Qcow2 $OUT_QCOW -Config $VMS_JSON `
-                -Out $OUT_VMPKG -Compression $VMPKG_COMPRESSION -Threads $VMPKG_THREADS
-            Write-Host "[vmpkg] Done  -> $OUT_VMPKG" -ForegroundColor Green
+            Write-Host "[vmpkg] note: zstd-compressed qcow2 inside -> needs the crosvm with qcow2 zstd read support" -ForegroundColor DarkYellow
+            # Compressing zstd clusters again buys ~1.7% (measured); auto picks none so an import is a plain copy.
+            if ($vmpkgComp -eq "auto") { $vmpkgComp = "none" }
         }
+        # Pure PowerShell + the built-in tar.exe (Windows 10 1803+): no python needed.
+        & (Join-Path $ROOT "pack-vmpkg.ps1") -Qcow2 $OUT_QCOW -Config $VMS_JSON `
+            -Out $OUT_VMPKG -Compression $vmpkgComp -Threads $VMPKG_THREADS
+        Write-Host "[vmpkg] Done  -> $OUT_VMPKG" -ForegroundColor Green
     }
 }
 finally {

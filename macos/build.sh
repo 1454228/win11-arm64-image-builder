@@ -132,10 +132,12 @@ echo "[build] === 4/4 compress qcow2 ==="
 OUT_QCOW="${OUT_QCOW:-$HERE/win11-droidvm-final.qcow2}"   # final artifact goes in macos/
 # convert only writes allocated clusters -> the artifact is compact/sparse (during install discard=unmap + debloat's
 # Optimize-Volume -ReTrim already TRIMs guest-freed space in real time, so the working qcow2 itself does not bloat).
-# COMPRESS non-empty adds -c (zlib-compress the clusters). NOTE: crosvm CANNOT read compressed clusters, so this is only
-# for shipping to a DroidVM import / pre-flight that decompresses first (DroidVM's pre-start guard also detects it and
-# offers to convert). Still bootable in plain qemu. Default off. (Plain string, not an array, for bash 3.2 on macOS.)
-COMPRESS_FLAG=""; [ -n "${COMPRESS:-}" ] && COMPRESS_FLAG="-c"
+# COMPRESS=1 adds -c with compression_type=zstd (zstd-compressed clusters, roughly half the size); 0/false/no/off/unset
+# = off. DroidVM's crosvm reads zstd clusters directly (its qcow2 backend gained zstd read support), so the image boots
+# as-is; plain -c (zlib) it can NOT read, so that form is never emitted. Still bootable in plain qemu. Default off.
+# (Plain string, not an array, for bash 3.2 on macOS.)
+case "$(printf '%s' "${COMPRESS:-}" | tr 'A-Z' 'a-z')" in "" | 0 | false | no | off) COMPRESS="" ;; esac
+COMPRESS_FLAG=""; [ -n "${COMPRESS:-}" ] && COMPRESS_FLAG="-c -o compression_type=zstd"
 qemu-img convert $COMPRESS_FLAG -O qcow2 "$FILES/win11-droidvm.qcow2" "$OUT_QCOW"
 sz=$(ls -lh "$OUT_QCOW" | awk '{print $5}')
 echo "[build] done ✅  -> $OUT_QCOW ($sz)"
@@ -147,14 +149,14 @@ echo "[build] done ✅  -> $OUT_QCOW ($sz)"
 if [ -n "${OUT_VMPKG:-}" ]; then
   ROOT="$(cd "$HERE/.." && pwd)"
   VMS_JSON="${VMS_JSON:-$ROOT/vms.json}"
-  VMPKG_COMPRESSION="${VMPKG_COMPRESSION:-gzip}"
+  # Unset: gzip, or none when the qcow2 already has zstd clusters (re-compressing those buys ~1.7%, measured).
+  VMPKG_COMPRESSION="${VMPKG_COMPRESSION:-$([ -n "${COMPRESS:-}" ] && echo none || echo gzip)}"
   VMPKG_THREADS="${VMPKG_THREADS:-0}"   # 0 = all cores
   echo "[build] === 5/5 pack vmpkg ==="
   if ! command -v python3 >/dev/null 2>&1; then
     echo "[vmpkg] python3 not found -> skipping .vmpkg (qcow2 is ready)"
-  elif [ -n "${COMPRESS:-}" ]; then
-    echo "[vmpkg] refusing: COMPRESS=1 makes a -c qcow2 crosvm can't read after extraction. Build the vmpkg from an uncompressed qcow2 (unset COMPRESS)."
   else
+    [ -n "${COMPRESS:-}" ] && echo "[vmpkg] note: zstd-compressed qcow2 inside -> needs the crosvm with qcow2 zstd read support"
     python3 "$ROOT/pack-vmpkg.py" --qcow2 "$OUT_QCOW" --config "$VMS_JSON" \
       --out "$OUT_VMPKG" --compression "$VMPKG_COMPRESSION" --threads "$VMPKG_THREADS"
     echo "[build] vmpkg ✅  -> $OUT_VMPKG"

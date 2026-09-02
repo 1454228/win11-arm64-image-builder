@@ -13,7 +13,7 @@
 
 兩條路線都把映像做成 **OOBE-pending(尚未完成首次設定)**:真正的「第一次開機」發生在 **Gunyah 目標機**上,由它全新偵測硬體並安裝驅動 —— 尤其把 `rdmapool` 綁到目標機才有的 `ACPI\RDMA0000`(受保護 VM 的 restricted-DMA pool),讓 `viostor` 的 DMA 走 bounce、不打到 lent 記憶體。這是驅動能在開機階段正確載入的關鍵。
 
-> **產物功能等價,但體積不同**:路線 B(macOS)約 **7 GB**,路線 A(Windows)約 **14 GB**。差在回收可用空間的方式 —— macOS 流程在 qemu 執行期即時 TRIM(`discard=unmap`)並線上 debloat,壓得較實;想更小可走 macOS。開 `-c` 壓縮(`COMPRESS=1`)後兩者都約 **6 GB**,但 crosvm 不能直讀,需 DroidVM 匯入 / pre-flight 解壓。
+> **產物功能等價,但體積不同**:路線 B(macOS)約 **7 GB**,路線 A(Windows)約 **14 GB**。差在回收可用空間的方式 —— macOS 流程在 qemu 執行期即時 TRIM(`discard=unmap`)並線上 debloat,壓得較實;想更小可走 macOS。開 `COMPRESS=1`(qcow2 **zstd** 壓縮叢集)後路線 A 實測 **4.7 GB**;新版 crosvm 可直讀 zstd 叢集,匯入後不必解壓即可開機(zlib 的 `-c` crosvm 讀不了,builder 不再產出)。
 
 ## 用法
 
@@ -85,8 +85,16 @@ SAC 走 ACPI SPCR,SPCR 由 edk2 依 crosvm 傳入的 SBSA UART FDT 節點生成,
     ```bash
     python3 pack-vmpkg.py --qcow2 out.qcow2 --config vms.json --out win11.vmpkg   # [--threads N]
     ```
-  - 入口變數:`VMPKG_COMPRESSION`(Windows 預設 `auto`、macOS 預設 `gzip`)、`VMPKG_THREADS`(0 = 全核)。
-- vmpkg 要用**未壓縮**的 qcow2(勿開 `COMPRESS`,否則 crosvm 解開後讀不了 `-c` 叢集)。
+  - 入口變數:`VMPKG_COMPRESSION`(Windows 預設 `auto`、macOS 預設 `gzip`;`COMPRESS=1` 時兩者預設改為 `none`,見下)、`VMPKG_THREADS`(0 = 全核)。
+- **qcow2 壓縮 × vmpkg 壓縮怎麼搭**(路線 A 同一顆映像實測;qcow2 zstd 需新版 crosvm 直讀):
+
+  | | qcow2 | vmpkg | 匯入後裝置上的 qcow2 |
+  |---|---|---|---|
+  | `COMPRESS` 關 + vmpkg zstd(預設) | 9.78 GiB | **4.18 GiB** | 9.78 GiB;叢集未壓縮,讀寫無額外成本 |
+  | `COMPRESS=1` + vmpkg none | 4.70 GiB | 4.70 GiB | 4.70 GiB;每次讀要解壓叢集,寫入會 COW 成未壓縮叢集、檔案隨使用變大 |
+  | `COMPRESS=1` + vmpkg zstd | 4.70 GiB | 4.62 GiB | 同上 |
+
+  要**下載最小**就維持預設(不壓 qcow2、vmpkg zstd);要的是**裝置上省空間**才開 `COMPRESS=1`,此時 vmpkg 再壓只省 1.7%,所以 `VMPKG_COMPRESSION` 未指定(Windows `auto`)時自動改用 `none`,匯入即單純複製。
 
 > 相容性:`serial_ports` 是 app 新欄位。新版 app 讀它(自動帶上 SBSA 主控台);舊版 app 匯入會忽略它、靠 ensureDefaults 補 COM 四顆(只是少了 SBSA,不會壞)。
 

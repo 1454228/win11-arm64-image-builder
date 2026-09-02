@@ -19,6 +19,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
+# Paths may be relative; they count from this file's folder (the repo root), whatever directory you launch from.
 $env:SRC_ISO     = "C:\Users\USER\Documents\DroidVMBuild\SW_DVD9_Win_Pro_11_25H2_Arm64_English_Pro_Ent_EDU_N_MLF_X24-13111.ISO"
 $env:DRIVERS_DIR = "https://github.com/HuJK/gunyah-guest-drivers-windows/releases/download/dev/gunyah-arm64-drivers.zip"
 # $env:IMAGE_INDEX = "1"
@@ -28,7 +29,7 @@ $env:DVM_USERNAME = "USER"        # Name of the local administrator account to c
 $env:DVM_PASSWORD = "DroidVM"     # Password (an empty password blocks RDP/SSH network logins)
 $env:SSH_PUBKEY  = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA root@ReplaceMe"
 $env:DISK_SIZE_MB = "40960"
-# $env:COMPRESS = "1"   # 1 = ship a qcow2 with zstd-compressed clusters (about half the size; needs the crosvm with qcow2 zstd read support); 0 or unset = off
+$env:COMPRESS = "0"   # 0 = plain qcow2 (default); 1 = zstd-compressed clusters (about half the size; needs the crosvm with qcow2 zstd read support)
 # $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; uses built-in tar.exe)
 # $env:VMPKG_COMPRESSION = "auto"   # auto (default) = zstd on all cores when tar.exe has libzstd (Win11), else single-threaded gzip; or zstd|gzip|none
 # $env:EMS_SAC_SOURCE = "skip"   # interactive SAC> runtime (EMS-SAC FoD): "skip" (default) = boot-EMS only, no SAC>; "online" = pulled from

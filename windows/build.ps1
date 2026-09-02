@@ -66,8 +66,11 @@ function Resolve-InputFile([string]$Src, [string]$SaveAs = "") {
         }
         return $dst
     }
-    if (-not (Test-Path $Src)) { throw "file not found: $Src" }
-    return $Src
+    # Relative paths count from the repo root (where windows_build.ps1 lives), and the result is always a full
+    # path: CIM cmdlets such as Mount-DiskImage ignore PowerShell's current location and fail on a relative one.
+    if (-not [IO.Path]::IsPathRooted($Src)) { $Src = Join-Path $ROOT $Src }
+    if (-not (Test-Path -LiteralPath $Src)) { throw "file not found: $Src" }
+    return (Resolve-Path -LiteralPath $Src).ProviderPath
 }
 
 # Driver zip/folder source -> the "root directory" after extraction. DRIVER_DIR / DRIVER_CERT reference this root via the ZIP/ prefix (mirrors macOS).
@@ -90,6 +93,7 @@ function Expand-ZipToken([string]$Path, [string]$ZipRoot) {
     if ($Path -eq 'ZIP') { return $ZipRoot }
     # String concatenation (not Join-Path, to avoid 'C:' being resolved as a PSDrive); normalize slashes after ZIP to backslashes.
     if ($Path -match '^ZIP[\\/](.*)$') { return ($ZipRoot.TrimEnd('\', '/') + '\' + ($Matches[1] -replace '/', '\')) }
+    if (-not [IO.Path]::IsPathRooted($Path)) { return (Join-Path $ROOT $Path) }   # plain relative: from the repo root
     return $Path
 }
 

@@ -18,7 +18,7 @@ export OPENSSH_SRC="https://github.com/PowerShell/Win32-OpenSSH/releases/downloa
 
 export DISK_SIZE="40G"
 export OUT_QCOW="$HERE/macos/win11-droidvm-final.qcow2"
-# export COMPRESS=1   # 1 = ship a qcow2 with zstd-compressed clusters (about half the size; needs the crosvm with qcow2 zstd read support); 0 or unset = off
+export COMPRESS=0   # 0 = plain qcow2 (default); 1 = zstd-compressed clusters (about half the size; needs the crosvm with qcow2 zstd read support)
 # export OUT_VMPKG="$HERE/macos/win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; needs python3)
 # export VMPKG_THREADS=0   # gzip worker threads for the vmpkg (0 = all cores)
 # export EMS_SAC_SOURCE=skip   # skip (default) = boot-EMS only, no SAC>; online = bake the EMS-SAC toolset (interactive SAC>) in at build time from Windows Update (qemu VM has NAT internet). A FoD ISO path is Route A only

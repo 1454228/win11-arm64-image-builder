@@ -245,7 +245,7 @@
         <!-- EMS-SAC 執行期 FoD：在「構建期」的 qemu 建置 VM 內下載並烙進映像（qemu -netdev user 有 NAT 上網）。
              -NoReboot：不重開機，成品以 InstallPending 出貨，目標端首次開機從本機元件庫套用、不需連網。
              設在 debloat（含 WU 停用 + ResetBase）之後，避免 ResetBase 動到剛落地的 FoD；腳本會臨時開回 WU。
-             僅在 02-make-iso.sh 放了 ems-sac-online.flag（EMS_SAC_ONLINE=1）時才實際安裝，否則 no-op。 -->
+             僅在 02-make-iso.sh 放了 ems-sac-online.flag（EMS_SAC_SOURCE=online）時才實際安裝，否則 no-op。 -->
         <SynchronousCommand wcm:action="add">
           <Order>16</Order><Description>build-time: bake EMS-SAC FoD (no reboot)</Description>
           <CommandLine>cmd /c if exist C:\DroidVM\setup-ems-sac.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File C:\DroidVM\setup-ems-sac.ps1 -NoReboot</CommandLine>

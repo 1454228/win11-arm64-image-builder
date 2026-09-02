@@ -27,8 +27,8 @@ $env:DISK_SIZE_MB = "40960"
 # $env:COMPRESS = "1"   # ship a compressed qcow2 (crosvm can't read it directly; DroidVM import/pre-flight decompresses)
 # $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; uses built-in tar.exe, keep COMPRESS off)
 # $env:VMPKG_COMPRESSION = "auto"   # auto (default) = zstd on all cores when tar.exe has libzstd (Win11), else single-threaded gzip; or zstd|gzip|none
-# $env:FOD_SOURCE = "E:\"   # ARM64 EMS-SAC FoD ISO mount -> offline-inject the interactive SAC> runtime (zero network)
-# $env:EMS_SAC_ONLINE = "1"   # no FoD ISO: install the SAC runtime online on the TARGET's first boot instead
+# $env:EMS_SAC_SOURCE = "skip"   # interactive SAC> runtime (EMS-SAC FoD): "skip" (default) = boot-EMS only, no SAC>; "online" = pulled from
+#                                #   Windows Update on the TARGET's first boot; "E:\" = ARM64 FoD ISO mount/folder -> injected offline (zero network)
 
 $env:DRIVER_DIR     = "ZIP/drivers"                                       # Directory containing each driver subfolder
 $env:DRIVER_INSTALL = "NetKVM rdmapool pvmpower vioinput viostor vioscsi viosnd viofs" # Install only these (empty = all); must include the viostor/vioscsi boot drivers. viosnd=virtio-sound, viofs=virtio-fs (non-boot)

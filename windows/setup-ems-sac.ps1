@@ -3,7 +3,8 @@
 
   The ARM64 LTSC/Pro image ships no SAC runtime (sacdrv.sys / sacsess.exe / sacsvr). The
   preferred way to add it is OFFLINE from a FoD source at build time (Route A build.ps1 step
-  5c, FOD_SOURCE). This script covers the ONLINE path, and is self-gating and safe to always
+  5c, EMS_SAC_SOURCE=<FoD path>). This script covers the ONLINE path (EMS_SAC_SOURCE=online),
+  and is self-gating and safe to always
   stage / always run:
 
     * If the capability is already Installed (offline injection worked) -> no-op.

@@ -208,13 +208,18 @@ $DRIVER_DIR     = if ($env:DRIVER_DIR)     { $env:DRIVER_DIR }     else { "ZIP/d
 $DRIVER_INSTALL = if ($env:DRIVER_INSTALL) { $env:DRIVER_INSTALL } else { "" }
 $DRIVER_CERT    = if ($env:DRIVER_CERT)    { $env:DRIVER_CERT }    else { "" }
 # EMS/SAC (Emergency Management Services): the interactive SAC> console needs the "EMS and SAC Toolset"
-# Feature-on-Demand (sacdrv.sys/sacsess.exe/sacsvr) which the LTSC/Pro ARM64 image does NOT ship. Set
-# FOD_SOURCE to the matching-build ARM64 FoD ISO mount or its extracted folder to inject it OFFLINE
-# (deterministic, recommended). If unset, the build still arms BCD EMS (boot-time serial text works),
-# and — only when EMS_SAC_ONLINE is non-empty — a first-boot script tries to pull the FoD from Windows
-# Update (needs network + a reboot). Leave both empty to ship boot-EMS only, no interactive SAC.
-$FOD_SOURCE      = if ($env:FOD_SOURCE)      { $env:FOD_SOURCE }      else { "" }
-$EMS_SAC_ONLINE  = if ($env:EMS_SAC_ONLINE)  { $env:EMS_SAC_ONLINE }  else { "" }
+# Feature-on-Demand (sacdrv.sys/sacsess.exe/sacsvr) which the LTSC/Pro ARM64 image does NOT ship.
+# EMS_SAC_SOURCE says where it comes from:
+#   skip     (default) boot-EMS only: BCD EMS is always armed (boot-time serial text works), no interactive SAC>
+#   online   a first-boot script pulls the FoD from Windows Update on the TARGET (network + one reboot)
+#   <path>   the matching-build ARM64 FoD ISO mount or its extracted folder -> injected OFFLINE in
+#            step 5c (deterministic, zero network, recommended)
+$EMS_SAC_SOURCE  = if ($env:EMS_SAC_SOURCE)  { $env:EMS_SAC_SOURCE }  else { "skip" }
+if (-not $env:EMS_SAC_SOURCE -and ($env:FOD_SOURCE -or $env:EMS_SAC_ONLINE)) {   # names before the merge
+    $EMS_SAC_SOURCE = if ($env:FOD_SOURCE) { $env:FOD_SOURCE } else { "online" }
+    Write-Host "[ems-sac] FOD_SOURCE / EMS_SAC_ONLINE were merged into EMS_SAC_SOURCE (skip | online | <FoD path>); using '$EMS_SAC_SOURCE'" -ForegroundColor DarkYellow
+}
+$emsSacOnline    = ($EMS_SAC_SOURCE -eq "online")
 $EMS_SAC_CAP     = 'Windows.Desktop.EMS-SAC.Tools~~~~0.0.1.0'
 # Account name. Use $env:DVM_USERNAME (not the built-in Windows $env:USERNAME = the current logged-in user). Unset -> USER.
 $USERNAME     = if ($env:DVM_USERNAME) { $env:DVM_USERNAME } else { "USER" }
@@ -362,26 +367,25 @@ exit
 
     # === 5c) EMS-SAC Feature-on-Demand (offline, for the interactive SAC> console) ===
     # The ARM64 LTSC/Pro image ships no SAC runtime; the "EMS and SAC Toolset" FoD provides
-    # sacdrv.sys + sacsess.exe + the sacsvr service. Inject it offline from FOD_SOURCE (the
+    # sacdrv.sys + sacsess.exe + the sacsvr service. Inject it offline from EMS_SAC_SOURCE (the
     # matching-build ARM64 FoD ISO mount or its extracted folder). Done BEFORE ResetBase so the
-    # capability folds into the reset component base. If FOD_SOURCE is unset we DON'T fail the
-    # build: BCD EMS (step 7b) still gives boot-time serial text, and the first-boot fallback
-    # (staged below, step 8d) can pull it from Windows Update when EMS_SAC_ONLINE is requested.
-    $emsSacInjected = $false
-    if ($FOD_SOURCE) {
-        $fodSrc = Resolve-InputFile $FOD_SOURCE
-        Write-Host "[ems-sac] injecting FoD offline from $fodSrc ..."
-        try {
-            Invoke-ExternalCommand -FilePath "dism" -ArgumentList @("/Image:$W\", "/Add-Capability", "/CapabilityName:$EMS_SAC_CAP", "/Source:$fodSrc", "/LimitAccess") -OutNull -What "dism /Add-Capability EMS-SAC"
-            $emsSacInjected = $true
-            Write-Host "[ems-sac] FoD injected offline (SAC runtime present in image)" -ForegroundColor Green
-        } catch {
-            Write-Host "  [warn] offline FoD injection failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
-            Write-Host "  [warn] check FOD_SOURCE points at the ARM64 FoD ISO/folder matching the image build" -ForegroundColor DarkYellow
+    # capability folds into the reset component base. Without a FoD path we DON'T fail the
+    # build: BCD EMS (step 7b) still gives boot-time serial text, and the first-boot script
+    # (staged below, step 8d) pulls it from Windows Update when EMS_SAC_SOURCE=online.
+    switch ($EMS_SAC_SOURCE) {
+        "skip"   { Write-Host "[ems-sac] EMS_SAC_SOURCE=skip: shipping boot-EMS only (no interactive SAC runtime)." -ForegroundColor DarkYellow }
+        "online" { Write-Host "[ems-sac] EMS_SAC_SOURCE=online: the target's first boot will pull the FoD from Windows Update (needs network)." -ForegroundColor DarkYellow }
+        default {
+            $fodSrc = Resolve-InputFile $EMS_SAC_SOURCE
+            Write-Host "[ems-sac] injecting FoD offline from $fodSrc ..."
+            try {
+                Invoke-ExternalCommand -FilePath "dism" -ArgumentList @("/Image:$W\", "/Add-Capability", "/CapabilityName:$EMS_SAC_CAP", "/Source:$fodSrc", "/LimitAccess") -OutNull -What "dism /Add-Capability EMS-SAC"
+                Write-Host "[ems-sac] FoD injected offline (SAC runtime present in image)" -ForegroundColor Green
+            } catch {
+                Write-Host "  [warn] offline FoD injection failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+                Write-Host "  [warn] check EMS_SAC_SOURCE points at the ARM64 FoD ISO/folder matching the image build" -ForegroundColor DarkYellow
+            }
         }
-    } else {
-        Write-Host "[ems-sac] FOD_SOURCE unset: shipping boot-EMS only (no interactive SAC runtime)." -ForegroundColor DarkYellow
-        if ($EMS_SAC_ONLINE) { Write-Host "[ems-sac] EMS_SAC_ONLINE set: first boot will try to pull the FoD from Windows Update." -ForegroundColor DarkYellow }
     }
 
     # === 6) Debloat (offline removal of provisioned Appx) ===
@@ -527,14 +531,14 @@ exit
     # === 8d) Stage EMS-SAC first-boot fallback (online FoD install) ===
     # setup-ems-sac.ps1 self-gates: it exits immediately if the FoD is already Installed (the
     # offline path in 5c succeeded). It only tries an online Windows-Update install when the
-    # marker file ems-sac-online.flag is present, which we write only when EMS_SAC_ONLINE is set
-    # AND the offline injection did not already happen. This keeps offline/air-gapped builds fully
-    # deterministic while still offering a one-touch online path for users without a FoD ISO.
+    # marker file ems-sac-online.flag is present, which we write only for EMS_SAC_SOURCE=online.
+    # This keeps offline/air-gapped builds fully deterministic while still offering a one-touch
+    # online path for users without a FoD ISO.
     Copy-Item (Join-Path $HERE "setup-ems-sac.ps1") "$stage\setup-ems-sac.ps1" -Force
     Write-Host "[ems-sac] staged setup-ems-sac.ps1 (first-boot FoD ensure)"
-    if ($EMS_SAC_ONLINE -and -not $emsSacInjected) {
+    if ($emsSacOnline) {
         [System.IO.File]::WriteAllText("$stage\ems-sac-online.flag", $EMS_SAC_CAP, (New-Object System.Text.UTF8Encoding($false)))
-        Write-Host "[ems-sac] armed online first-boot FoD install (EMS_SAC_ONLINE)" -ForegroundColor Yellow
+        Write-Host "[ems-sac] armed online first-boot FoD install (EMS_SAC_SOURCE=online)" -ForegroundColor Yellow
     }
 
     # === 8b) ReTrim so debloat/cleanup actually shrinks the image ===

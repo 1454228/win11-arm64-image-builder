@@ -21,7 +21,7 @@ export OUT_QCOW="$HERE/macos/win11-droidvm-final.qcow2"
 # export COMPRESS=1   # ship a compressed qcow2 (crosvm can't read it directly; DroidVM import/pre-flight decompresses)
 # export OUT_VMPKG="$HERE/macos/win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; needs python3, keep COMPRESS off)
 # export VMPKG_THREADS=0   # gzip worker threads for the vmpkg (0 = all cores)
-# export EMS_SAC_ONLINE=1   # bake the EMS-SAC toolset (interactive SAC>) in at build time from Windows Update (qemu VM has NAT internet)
+# export EMS_SAC_SOURCE=skip   # skip (default) = boot-EMS only, no SAC>; online = bake the EMS-SAC toolset (interactive SAC>) in at build time from Windows Update (qemu VM has NAT internet). A FoD ISO path is Route A only
 
 export BACKGROUND=false
 

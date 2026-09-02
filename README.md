@@ -42,8 +42,7 @@ bash macos_build.sh
 | `USERNAME` / `PASSWORD` | 建立的本機管理員帳號。macOS 用 `USERNAME` / `PASSWORD`;Windows 用 `$env:DVM_USERNAME` / `$env:DVM_PASSWORD` |
 | `SSH_PUBKEY` | SSH 公鑰(空 = 只密碼登入) |
 | `OUT_QCOW` | 輸出 qcow2 路徑 |
-| `FOD_SOURCE` | **僅路線 A**。EMS-SAC 執行期 FoD 的離線來源(ARM64 FoD ISO 掛載點/資料夾)→ 離線 `dism /Add-Capability` 烙進映像,全程零連網。見下方 EMS/SAC |
-| `EMS_SAC_ONLINE` | 非空 = 沒有 `FOD_SOURCE` 時改用線上安裝 FoD。路線 A 於**目標端首次開機**連網裝;路線 B 於**構建期** qemu VM 內連網裝並烙入(目標端免連網) |
+| `EMS_SAC_SOURCE` | 互動式 `SAC>` 執行期 FoD 從哪來:**`skip`**(預設,只出 boot-EMS)/ **`online`**(路線 A 於**目標端首次開機**連網裝;路線 B 於**構建期** qemu VM 內連網裝並烙入,目標端免連網)/ **`E:\`**(ARM64 FoD ISO 掛載點/資料夾,**僅路線 A**,離線 `dism /Add-Capability` 烙進映像、全程零連網)。見下方 EMS/SAC |
 
 ## EMS / SAC(序列 out-of-band 主控台,`SAC>`)
 
@@ -51,9 +50,9 @@ bash macos_build.sh
 
 | | 路線 A(Windows) | 路線 B(macOS) |
 |---|---|---|
-| **離線 FoD**(零連網,推薦) | `FOD_SOURCE` → 離線 DISM 烙入 | 無(建置主機非 Windows,無法離線 DISM) |
-| **線上 FoD** | `EMS_SAC_ONLINE=1` → **目標端首次開機**連網裝 + 自動重開一次 | `EMS_SAC_ONLINE=1` → **構建期** qemu VM 連網下載並烙入 → 目標端**免連網**、首開機從本機套用 |
-| 兩者皆不設 | 只出 boot-EMS,無互動 `SAC>` | 同左 |
+| **離線 FoD**(零連網,推薦) | `EMS_SAC_SOURCE=E:\` → 離線 DISM 烙入 | 無(建置主機非 Windows,無法離線 DISM;給路徑會直接報錯) |
+| **線上 FoD** | `EMS_SAC_SOURCE=online` → **目標端首次開機**連網裝 + 自動重開一次 | `EMS_SAC_SOURCE=online` → **構建期** qemu VM 連網下載並烙入 → 目標端**免連網**、首開機從本機套用 |
+| `EMS_SAC_SOURCE=skip`(預設) | 只出 boot-EMS,無互動 `SAC>` | 同左 |
 
 沒連網**不會卡死**:安裝腳本 try/catch 略過,boot-EMS 照常,只是少了互動 `SAC>`。
 

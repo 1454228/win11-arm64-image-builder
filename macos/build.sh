@@ -108,11 +108,20 @@ PASSWORD="${PASSWORD:-}"
 SSH_PUBKEY="${SSH_PUBKEY:-}"
 OPENSSH_SRC="${OPENSSH_SRC:-}"
 [ -n "$OPENSSH_SRC" ] && OPENSSH_SRC="$(resolve_file "$OPENSSH_SRC")"
-# EMS-SAC: non-empty arms the target-side online install of the interactive SAC runtime FoD (see 02-make-iso.sh).
-EMS_SAC_ONLINE="${EMS_SAC_ONLINE:-}"
+# EMS-SAC (interactive SAC> runtime FoD): skip (default) = boot-EMS only; online = bake it in at build time inside
+# the qemu VM (see 02-make-iso.sh). A FoD ISO path is Route A only (no offline DISM off a non-Windows host).
+if [ -z "${EMS_SAC_SOURCE:-}" ] && [ -n "${EMS_SAC_ONLINE:-}" ]; then   # name before the merge
+  echo "[ems-sac] EMS_SAC_ONLINE was merged into EMS_SAC_SOURCE=online; using it"
+  EMS_SAC_SOURCE=online
+fi
+EMS_SAC_SOURCE="$(printf '%s' "${EMS_SAC_SOURCE:-skip}" | tr 'A-Z' 'a-z')"
+case "$EMS_SAC_SOURCE" in
+  skip | online) ;;
+  *) echo "[ems-sac] EMS_SAC_SOURCE='$EMS_SAC_SOURCE': Route B cannot inject a FoD offline (build host is not Windows); use skip or online" >&2; exit 1 ;;
+esac
 
 export SRC_ISO IMAGE_INDEX DRIVER_DIR DRIVER_INSTALL DRIVER_CERT BCD_PATCHED BCD_TEMPLATE \
-       USERNAME PASSWORD SSH_PUBKEY OPENSSH_SRC FILES EMS_SAC_ONLINE
+       USERNAME PASSWORD SSH_PUBKEY OPENSSH_SRC FILES EMS_SAC_SOURCE
 
 echo "[build] === 2/4 pack install ISO ==="
 bash "$HERE/02-make-iso.sh"

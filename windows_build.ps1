@@ -4,6 +4,11 @@
 #   Usage:  powershell -ExecutionPolicy Bypass -File windows_build.ps1
 # =====================================================================
 $ErrorActionPreference = 'Stop'
+# This process only (env var, nothing persisted, GPO still wins): the .ps1 files this one calls next
+# (windows\build.ps1, pack-vmpkg.ps1) would otherwise each prompt again when they carry the
+# mark-of-the-web under an Unrestricted policy. This script's own prompt happens before line 1 and
+# can only be avoided by launching with -ExecutionPolicy Bypass or by Unblock-File.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Start-Process powershell "-NoExit -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs

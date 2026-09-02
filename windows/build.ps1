@@ -11,6 +11,8 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
+# This process only (see ..\windows_build.ps1): scripts called from here (pack-vmpkg.ps1) don't prompt again.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 # --- Command echo helpers: print the command before executing it ---
 function Format-CommandArg([AllowNull()][object]$Arg) {

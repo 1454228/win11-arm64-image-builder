@@ -132,12 +132,14 @@ sz=$(ls -lh "$OUT_QCOW" | awk '{print $5}')
 echo "[build] done ✅  -> $OUT_QCOW ($sz)"
 
 # Optional: pack a ready-to-import .vmpkg (qcow2 + local VM config baked in, incl. the SBSA
-# console for SAC). Device-less, offline; needs python3. vms.json (repo root) is the config
-# source; edit it to tune RAM/swiotlb/serial/etc. (see repo README "vmpkg / vms.json").
+# console for SAC). Device-less, offline; needs python3 (gzip runs on all cores, stdlib only).
+# vms.json (repo root) is the config source; edit it to tune RAM/swiotlb/serial/etc. (see repo
+# README "vmpkg / vms.json").
 if [ -n "${OUT_VMPKG:-}" ]; then
   ROOT="$(cd "$HERE/.." && pwd)"
   VMS_JSON="${VMS_JSON:-$ROOT/vms.json}"
   VMPKG_COMPRESSION="${VMPKG_COMPRESSION:-gzip}"
+  VMPKG_THREADS="${VMPKG_THREADS:-0}"   # 0 = all cores
   echo "[build] === 5/5 pack vmpkg ==="
   if ! command -v python3 >/dev/null 2>&1; then
     echo "[vmpkg] python3 not found -> skipping .vmpkg (qcow2 is ready)"
@@ -145,7 +147,7 @@ if [ -n "${OUT_VMPKG:-}" ]; then
     echo "[vmpkg] refusing: COMPRESS=1 makes a -c qcow2 crosvm can't read after extraction. Build the vmpkg from an uncompressed qcow2 (unset COMPRESS)."
   else
     python3 "$ROOT/pack-vmpkg.py" --qcow2 "$OUT_QCOW" --config "$VMS_JSON" \
-      --out "$OUT_VMPKG" --compression "$VMPKG_COMPRESSION"
+      --out "$OUT_VMPKG" --compression "$VMPKG_COMPRESSION" --threads "$VMPKG_THREADS"
     echo "[build] vmpkg ✅  -> $OUT_VMPKG"
   fi
 fi

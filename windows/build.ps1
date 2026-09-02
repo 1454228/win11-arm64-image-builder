@@ -191,10 +191,12 @@ $DRIVERS_DIR = if ($env:DRIVERS_DIR) { $env:DRIVERS_DIR }      else { "https://g
 $IMAGE_INDEX = if ($env:IMAGE_INDEX) { [int]$env:IMAGE_INDEX } else { 0 }       # 0 = list editions and prompt
 $DISK_MB     = if ($env:DISK_SIZE_MB){ [int]$env:DISK_SIZE_MB }else { 40960 }
 $OUT_QCOW    = if ($env:OUT_QCOW)    { $env:OUT_QCOW }         else { Join-Path $ROOT "win11-droidvm-final.qcow2" }
-# Optional: also pack a ready-to-import .vmpkg (qcow2 + local VM config baked in). Needs python. See repo README.
+# Optional: also pack a ready-to-import .vmpkg (qcow2 + local VM config baked in) with pack-vmpkg.ps1
+# (pure PowerShell + the built-in tar.exe). See repo README.
 $OUT_VMPKG   = if ($env:OUT_VMPKG)   { $env:OUT_VMPKG }        else { "" }
 $VMS_JSON    = if ($env:VMS_JSON)    { $env:VMS_JSON }         else { Join-Path $ROOT "vms.json" }
-$VMPKG_COMPRESSION = if ($env:VMPKG_COMPRESSION) { $env:VMPKG_COMPRESSION } else { "gzip" }
+$VMPKG_COMPRESSION = if ($env:VMPKG_COMPRESSION) { $env:VMPKG_COMPRESSION } else { "auto" }   # auto = zstd on all cores when tar.exe has libzstd (Win11), else gzip
+$VMPKG_THREADS = if ($env:VMPKG_THREADS) { [int]$env:VMPKG_THREADS } else { 0 }               # zstd threads, 0 = all
 $COMPRESS    = if ($env:COMPRESS)    { $env:COMPRESS }         else { "" }         # non-empty = -c compress the qcow2 (see step 9)
 $LETTER_ESP  = if ($env:LETTER_ESP)  { $env:LETTER_ESP }       else { Get-FreeDriveLetter }
 $LETTER_WIN  = if ($env:LETTER_WIN)  { $env:LETTER_WIN }       else { Get-FreeDriveLetter @($LETTER_ESP) }
@@ -566,7 +568,7 @@ exit
             Write-Host "[vmpkg] packing $OUT_VMPKG ..."
             # Pure PowerShell + the built-in tar.exe (Windows 10 1803+): no python needed.
             & (Join-Path $ROOT "pack-vmpkg.ps1") -Qcow2 $OUT_QCOW -Config $VMS_JSON `
-                -Out $OUT_VMPKG -Compression $VMPKG_COMPRESSION
+                -Out $OUT_VMPKG -Compression $VMPKG_COMPRESSION -Threads $VMPKG_THREADS
             Write-Host "[vmpkg] Done  -> $OUT_VMPKG" -ForegroundColor Green
         }
     }

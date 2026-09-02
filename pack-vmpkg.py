@@ -29,12 +29,17 @@ verified against lib/pkg + daemon/vm/pkg):
 The reader validates: magic, manifest_version==1, known compression, header<->manifest cross
 checks (app_version_code, compression), exact data_size consumption, and all-zero padding.
 
+gzip runs multi-threaded (pigz-style, see ParallelGzipWriter): the output is still ONE ordinary
+gzip member, so the app's plain java.util.zip.GZIPInputStream reads it unchanged.
+
 Usage:
   pack-vmpkg.py --qcow2 out.qcow2 --config vms.json --out win11.vmpkg
-                [--disk-name win11.qcow2] [--compression gzip|none|xz]
+                [--disk-name win11.qcow2] [--compression gzip|none|xz] [--threads N]
                 [--app-version 1.0] [--app-version-code 1]
 """
 import argparse
+import collections
+import concurrent.futures
 import gzip
 import io
 import json
@@ -45,6 +50,7 @@ import struct
 import sys
 import tarfile
 import time
+import zlib
 
 ALIGN = 0x1000
 HEADER_SIZE = 24
@@ -99,12 +105,152 @@ def build_header(manifest_size, data_size, comp_id, app_version_code):
     return bytes(hdr)
 
 
-def open_compressor(fileobj, comp):
+# --- multi-threaded gzip ----------------------------------------------------------------
+# The same trick pigz uses. The input is cut into fixed chunks; every chunk is deflated on its
+# own thread as a RAW deflate stream (wbits=-15) ended with Z_SYNC_FLUSH (an empty stored block,
+# no BFINAL), and the pieces are concatenated in order. Raw deflate blocks are self-delimiting,
+# so the concatenation is one valid deflate stream; a final empty BFINAL block terminates it,
+# and a normal gzip header/trailer wraps the whole thing -- ONE member, readable by any gzip
+# decoder. This matters here: the app reads with GZIPInputStream over a LimitedInputStream
+# whose available() is 0, and in that configuration Java's concatenated-member detection is
+# a heuristic (>26 leftover bytes) that fails on ~0.04% of member boundaries -- over the
+# thousands of chunks in a multi-GB disk that is most imports. Each chunk is primed (zdict) with the previous
+# chunk's last 32 KiB; the decoder's window already holds those bytes, so back-references
+# across the cut resolve and the ratio matches plain single-threaded gzip.
+# zlib releases the GIL inside deflate()/crc32(), so plain threads scale to real cores.
+GZIP_HEADER = b"\x1f\x8b\x08\x00" + b"\x00\x00\x00\x00" + b"\x00\xff"  # mtime 0, xfl 0, OS unknown
+GZIP_WINDOW = 32768
+DEFLATE_FINAL_EMPTY_BLOCK = zlib.compressobj(6, zlib.DEFLATED, -15).flush(zlib.Z_FINISH)  # b"\x03\x00"
+
+
+def _deflate_chunk(chunk, level, zdict):
+    if zdict:
+        c = zlib.compressobj(level, zlib.DEFLATED, -15, 8, zlib.Z_DEFAULT_STRATEGY, zdict)
+    else:
+        c = zlib.compressobj(level, zlib.DEFLATED, -15)
+    return c.compress(chunk) + c.flush(zlib.Z_SYNC_FLUSH), zlib.crc32(chunk)
+
+
+def _gf2_matrix_times(mat, vec):
+    s = 0
+    i = 0
+    while vec:
+        if vec & 1:
+            s ^= mat[i]
+        vec >>= 1
+        i += 1
+    return s
+
+
+def _gf2_matrix_square(mat):
+    return [_gf2_matrix_times(mat, mat[n]) for n in range(32)]
+
+
+def _crc32_shift_operator(len2):
+    """The GF(2) matrix that advances a CRC-32 over len2 zero bytes (zlib's crc32_combine)."""
+    odd = [0xEDB88320] + [1 << n for n in range(31)]   # CRC-32 polynomial, then the shifts
+    even = _gf2_matrix_square(odd)                       # operator for 2 zero bits
+    odd = _gf2_matrix_square(even)                       # operator for 4 zero bits
+    op = None                                            # identity until the first 1 bit
+    while len2:
+        even = _gf2_matrix_square(odd)                   # 8, 32, 128, ... zero bits
+        if len2 & 1:
+            op = even if op is None else [_gf2_matrix_times(even, op[n]) for n in range(32)]
+        len2 >>= 1
+        if not len2:
+            break
+        odd = _gf2_matrix_square(even)                   # 16, 64, 256, ... zero bits
+        if len2 & 1:
+            op = odd if op is None else [_gf2_matrix_times(odd, op[n]) for n in range(32)]
+        len2 >>= 1
+    return op
+
+
+_CRC_OPS = {}
+
+
+def crc32_combine(crc1, crc2, len2):
+    """crc32(A + B) from crc32(A), crc32(B) and len(B). Operators are cached per len2, so the
+    fixed chunk size costs one 32x32 matrix build, then ~microseconds per chunk."""
+    if len2 <= 0:
+        return crc1
+    op = _CRC_OPS.get(len2)
+    if op is None:
+        op = _CRC_OPS[len2] = _crc32_shift_operator(len2)
+    return _gf2_matrix_times(op, crc1) ^ crc2
+
+
+class ParallelGzipWriter(object):
+    """A write()/close() stream that gzips into fileobj (which it does not close) using
+    `threads` worker threads. See the block comment above for the format."""
+
+    def __init__(self, fileobj, level=6, threads=None, chunk_size=4 << 20):
+        self.f = fileobj
+        self.level = level
+        self.chunk_size = chunk_size
+        self.threads = max(1, threads or os.cpu_count() or 1)
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=self.threads)
+        self.window = 2 * self.threads                   # chunks in flight (bounds memory)
+        self.pending = collections.deque()               # (future, chunk_len) in input order
+        self.buf = bytearray()
+        self.tail = b""                                  # last 32 KiB of the previous chunk
+        self.crc = 0
+        self.size = 0                                    # uncompressed bytes emitted
+        self.pos = 0                                     # uncompressed bytes accepted
+        self.closed = False
+        self.f.write(GZIP_HEADER)
+
+    def tell(self):
+        return self.pos                                  # tarfile reads this once, at open()
+
+    def write(self, data):
+        self.buf += data
+        self.pos += len(data)
+        while len(self.buf) >= self.chunk_size:
+            chunk = bytes(self.buf[:self.chunk_size])
+            del self.buf[:self.chunk_size]
+            self._submit(chunk)
+        return len(data)
+
+    def _submit(self, chunk):
+        while len(self.pending) >= self.window:
+            self._drain_one()
+        self.pending.append((self.pool.submit(_deflate_chunk, chunk, self.level, self.tail),
+                             len(chunk)))
+        self.tail = chunk[-GZIP_WINDOW:]
+
+    def _drain_one(self):
+        fut, n = self.pending.popleft()
+        out, crc = fut.result()
+        self.f.write(out)
+        self.crc = crc32_combine(self.crc, crc, n)
+        self.size += n
+
+    def flush(self):
+        pass
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        if self.buf:
+            self._submit(bytes(self.buf))
+            self.buf = bytearray()
+        while self.pending:
+            self._drain_one()
+        self.pool.shutdown()
+        self.f.write(DEFLATE_FINAL_EMPTY_BLOCK)
+        self.f.write(struct.pack("<II", self.crc & 0xFFFFFFFF, self.size & 0xFFFFFFFF))
+
+
+def open_compressor(fileobj, comp, threads=None):
     """Return a writable stream that compresses into fileobj (which it must NOT close)."""
     if comp == "none":
         return fileobj, False  # (stream, owns_close)
     if comp == "gzip":
-        return gzip.GzipFile(fileobj=fileobj, mode="wb", compresslevel=6, mtime=0), True
+        if threads == 1:
+            return gzip.GzipFile(fileobj=fileobj, mode="wb", compresslevel=6, mtime=0), True
+        return ParallelGzipWriter(fileobj, level=6, threads=threads), True
     if comp == "xz":
         return lzma.LZMAFile(fileobj, mode="wb"), True
     if comp == "zstd":
@@ -139,6 +285,8 @@ def main():
     ap.add_argument("--disk-format", default="qcow2", help="disk format field (default: qcow2)")
     ap.add_argument("--compression", default="gzip", choices=["none", "gzip", "xz"],
                     help="data-blob compression (default: gzip; stdlib-only)")
+    ap.add_argument("--threads", type=int, default=0,
+                    help="gzip worker threads (default 0 = all CPUs; 1 = plain single-threaded gzip)")
     ap.add_argument("--app-version", default="0.0", help="manifest app_version string")
     ap.add_argument("--app-version-code", type=int, default=1, help="manifest app_version_code (u16)")
     args = ap.parse_args()
@@ -187,6 +335,8 @@ def main():
         raise SystemExit("manifest too large: %d bytes (>64KiB)" % len(manifest_bytes))
 
     comp_id = COMPRESSION_ID[args.compression]
+    threads = args.threads if args.threads > 0 else (os.cpu_count() or 1)
+    t0 = time.time()
 
     with open(args.out, "wb") as f:
         f.write(b"\x00" * HEADER_SIZE)                       # header placeholder
@@ -197,8 +347,11 @@ def main():
         data_start = f.tell()
         assert data_start % ALIGN == 0, data_start
 
-        stream, owns = open_compressor(f, args.compression)
-        tar = tarfile.open(fileobj=stream, mode="w", format=tarfile.GNU_FORMAT)
+        stream, owns = open_compressor(f, args.compression, threads)
+        try:   # 4 MiB copy buffer instead of tarfile's 16 KiB default (Python >= 3.7)
+            tar = tarfile.open(fileobj=stream, mode="w", format=tarfile.GNU_FORMAT, copybufsize=4 << 20)
+        except TypeError:
+            tar = tarfile.open(fileobj=stream, mode="w", format=tarfile.GNU_FORMAT)
         add_tar_bytes(tar, MANIFEST_NAME, manifest_bytes)    # redundant copy (import ignores it)
         add_tar_file(tar, archive_path, args.qcow2)          # the disk, streamed
         tar.close()
@@ -213,10 +366,14 @@ def main():
         f.seek(0)
         f.write(build_header(len(manifest_bytes), data_size, comp_id, args.app_version_code))
 
+    elapsed = max(time.time() - t0, 1e-6)
     total = os.path.getsize(args.out)
     print("[vmpkg] wrote %s" % args.out)
     print("[vmpkg]   disk=%s (%.2f GiB)  compression=%s  data=%.2f GiB  package=%.2f GiB"
           % (archive_path, disk_size / 2**30, args.compression, data_size / 2**30, total / 2**30))
+    print("[vmpkg]   %.1fs, %.0f MB/s in%s"
+          % (elapsed, disk_size / 1e6 / elapsed,
+             (", %d threads" % threads) if args.compression == "gzip" else ""))
     print("[vmpkg]   vm: memory_mb=%s cpu_count=%s swiotlb_mb=%s"
           % (vm.get("memory_mb"), vm.get("cpu_count"), vm.get("swiotlb_mb")))
 

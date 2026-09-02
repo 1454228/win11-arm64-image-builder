@@ -16,9 +16,18 @@
 # longnames understood), but bsdtar's default pax format writes extended-header entries it
 # has no reason to meet -- so the format is pinned to gnutar.
 #
+# Compression: `auto` (default) is zstd when this tar.exe carries libzstd (Windows 11's
+# bsdtar 3.7+), else gzip. zstd runs on every core (libarchive's zstd:threads), packs a bit
+# smaller than gzip, and is what the app's own exporter emits by default, so the reader path
+# is the most-travelled one. gzip stays single-threaded here: bsdtar's gzip filter has no
+# threads, and PowerShell 5.1's .NET Framework DeflateStream cannot sync-flush, which rules
+# out the pigz-style split that pack-vmpkg.py does (multi-member gzip is not an option: the
+# app's GZIPInputStream sits on a stream whose available() is 0 and then only detects a
+# following member heuristically -- see the .py's comment).
+#
 # Usage:
 #   pack-vmpkg.ps1 -Qcow2 out.qcow2 -Config vms.json -Out win11.vmpkg
-#                  [-DiskName win11.qcow2] [-Compression gzip|none]
+#                  [-DiskName win11.qcow2] [-Compression auto|zstd|gzip|none] [-Threads N]
 #                  [-AppVersion 0.0] [-AppVersionCode 1]
 
 [CmdletBinding()]
@@ -28,7 +37,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$DiskName = "",
     [string]$DiskFormat = "qcow2",
-    [ValidateSet("gzip", "none")][string]$Compression = "gzip",
+    [ValidateSet("auto", "zstd", "gzip", "none")][string]$Compression = "auto",
+    [int]$Threads = 0,          # zstd worker threads; 0 = all logical processors
     [string]$AppVersion = "0.0",
     [int]$AppVersionCode = 1
 )
@@ -39,8 +49,9 @@ Set-StrictMode -Version 2
 $ALIGN = 0x1000
 $HEADER_SIZE = 24
 $MANIFEST_VERSION = 1
-$COMPRESSION_ID = @{ none = 0; gzip = 1 }
-$COMPRESSION_NAME = @{ none = "NONE"; gzip = "GZIP" }
+$COMPRESSION_ID = @{ none = 0; gzip = 1; zstd = 3 }      # lib/archive/Compression.java
+$COMPRESSION_NAME = @{ none = "NONE"; gzip = "GZIP"; zstd = "ZSTD" }
+$ZSTD_LEVEL = 3                                            # the app's own export level
 
 function Align-Up([long]$v, [long]$a = 0x1000) {
     return (($v + $a - 1) -band (-bnot ($a - 1)))
@@ -71,6 +82,14 @@ $Config = (Resolve-Path -LiteralPath $Config).ProviderPath
 if (-not [IO.Path]::IsPathRooted($Out)) { $Out = Join-Path (Get-Location).ProviderPath $Out }
 $tar = Get-Command tar.exe -ErrorAction SilentlyContinue
 if (-not $tar) { throw "tar.exe not found (ships with Windows 10 1803+)" }
+$tarVersion = (& $tar.Source --version 2>&1 | Out-String).Trim()
+$hasZstd = $tarVersion -match "libzstd"
+if ($Compression -eq "auto") {
+    $Compression = if ($hasZstd) { "zstd" } else { "gzip" }
+} elseif ($Compression -eq "zstd" -and -not $hasZstd) {
+    throw "this tar.exe has no libzstd ($tarVersion); use -Compression gzip"
+}
+if ($Threads -le 0) { $Threads = [Math]::Max(1, [Environment]::ProcessorCount) }
 
 # --- manifest ---------------------------------------------------------------------------
 $vm = Get-Content -LiteralPath $Config -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -128,10 +147,15 @@ try {
     }
 
     $tarArgs = @("-c", "--format", "gnutar")
-    if ($Compression -eq "gzip") { $tarArgs += "-z" }
+    switch ($Compression) {
+        "gzip" { $tarArgs += "-z" }
+        "zstd" { $tarArgs += @("--zstd", "--options", "zstd:compression-level=$ZSTD_LEVEL,zstd:threads=$Threads") }
+    }
     $tarArgs += @("-f", $dataTmp, "-C", $stage, "manifest.json", $archivePath)
+    $sw = [Diagnostics.Stopwatch]::StartNew()
     & $tar.Source @tarArgs
     if ($LASTEXITCODE -ne 0) { throw "tar.exe failed with exit code $LASTEXITCODE" }
+    $sw.Stop()
     $dataSize = (Get-Item -LiteralPath $dataTmp).Length
 
     # --- assemble ------------------------------------------------------------------------
@@ -174,5 +198,8 @@ $total = (Get-Item -LiteralPath $Out).Length
 Write-Host ("[vmpkg] wrote {0}" -f $Out)
 Write-Host ("[vmpkg]   disk={0} ({1:N2} GiB)  compression={2}  data={3:N2} GiB  package={4:N2} GiB" -f `
     $archivePath, ($diskSize / 1GB), $Compression, ($dataSize / 1GB), ($total / 1GB))
+Write-Host ("[vmpkg]   {0:N1}s, {1:N0} MB/s in{2}  ({3})" -f `
+    $sw.Elapsed.TotalSeconds, ($diskSize / 1e6 / [Math]::Max($sw.Elapsed.TotalSeconds, 1e-6)), `
+    $(if ($Compression -eq "zstd") { ", $Threads threads" } else { "" }), $tarVersion.Split("`n")[0].Trim())
 Write-Host ("[vmpkg]   vm: memory_mb={0} cpu_count={1} swiotlb_mb={2}" -f `
     $vm.memory_mb, $vm.cpu_count, $vm.swiotlb_mb)

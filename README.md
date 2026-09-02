@@ -77,15 +77,16 @@ SAC 走 ACPI SPCR,SPCR 由 edk2 依 crosvm 傳入的 SBSA UART FDT 節點生成,
 設 `OUT_VMPKG` 就會在 qcow2 之外**再吐一顆可直接匯入的 `.vmpkg`**,把 VM 設定(RAM / swiotlb / SBSA 主控台 / boot)一起烙進封裝 —— app 匯入即帶好設定,開箱即用、免手動、免每次跑 app 的 import→export。
 
 - **設定來源 = 本地 `vms.json`**(repo 根目錄,本地維護一份)。改它即可調 RAM / CPU / swiotlb / 序列埠等;packager 會自動把 qcow2 補成頂層 disk 條目。預設已放 `memory_mb=3072`、`swiotlb_mb=256`、`serial_ports` 含 SBSA 主控台(SAC)+ COM sink、UEFI boot。
-- **打包器**:兩份等價實作,容器 byte-exact 對齊 app 的 `PackageHeader`/`VMExportTask`(gzip(GNU-tar))。
-  - Windows 路線用 **`pack-vmpkg.ps1`**——純 PowerShell + 內建 `tar.exe`(Win10 1803+),**零額外相依,不需要 Python**:
+- **打包器**:兩份等價實作,容器 byte-exact 對齊 app 的 `PackageHeader`/`VMExportTask`(壓縮(GNU-tar)),壓縮都吃滿全部核心:
+  - Windows 路線用 **`pack-vmpkg.ps1`**——純 PowerShell + 內建 `tar.exe`(Win10 1803+),**零額外相依,不需要 Python**。預設 `-Compression auto`:`tar.exe` 帶 libzstd(Win11)就用 **zstd 多執行緒**(`-Threads`,預設全核;app 自家匯出也是 zstd),否則退回 gzip(bsdtar 的 gzip 只有單執行緒):
     ```powershell
-    .\pack-vmpkg.ps1 -Qcow2 out.qcow2 -Config vms.json -Out win11.vmpkg
+    .\pack-vmpkg.ps1 -Qcow2 out.qcow2 -Config vms.json -Out win11.vmpkg   # [-Compression auto|zstd|gzip|none] [-Threads N]
     ```
-  - macOS 路線用 **`pack-vmpkg.py`**(純 Python 3 stdlib,macOS 內建 python3):
+  - macOS 路線用 **`pack-vmpkg.py`**(純 Python 3 stdlib,macOS 內建 python3)。gzip 是 pigz 式多執行緒(`--threads`,預設全核),輸出仍是單一標準 gzip member,app 端照常讀:
     ```bash
-    python3 pack-vmpkg.py --qcow2 out.qcow2 --config vms.json --out win11.vmpkg
+    python3 pack-vmpkg.py --qcow2 out.qcow2 --config vms.json --out win11.vmpkg   # [--threads N]
     ```
+  - 入口變數:`VMPKG_COMPRESSION`(Windows 預設 `auto`、macOS 預設 `gzip`)、`VMPKG_THREADS`(0 = 全核)。
 - vmpkg 要用**未壓縮**的 qcow2(勿開 `COMPRESS`,否則 crosvm 解開後讀不了 `-c` 叢集)。
 
 > 相容性:`serial_ports` 是 app 新欄位。新版 app 讀它(自動帶上 SBSA 主控台);舊版 app 匯入會忽略它、靠 ensureDefaults 補 COM 四顆(只是少了 SBSA,不會壞)。
@@ -102,7 +103,8 @@ macos_build.sh      路線 B 入口(改變數後 bash 執行)
 windows_build.ps1   路線 A 入口(改變數後以系統管理員執行)
 macos/              路線 B 實作:build.sh + 00/02/03 階段 + autounattend / gunyah-oobe + Colima BCD patch
 windows/            路線 A 實作:build.ps1 + unattend(詳見 windows/README.md)
-pack-vmpkg.py       qcow2 + vms.json → .vmpkg 打包器(純 stdlib,兩路線 OUT_VMPKG 共用,也可獨立執行)
+pack-vmpkg.py       qcow2 + vms.json → .vmpkg 打包器(純 stdlib,多執行緒 gzip;macOS 路線 OUT_VMPKG 用,也可獨立執行)
+pack-vmpkg.ps1      同上的 Windows 版(純 PowerShell + 內建 tar.exe,zstd 多執行緒;Windows 路線 OUT_VMPKG 用)
 vms.json            出廠 VM 設定模板(RAM/swiotlb/序列埠/boot);本地維護,打包時烙入 vmpkg
 files/              各路線的中間產物快取(URL 下載 / zip 解壓,已 gitignore)
 ```

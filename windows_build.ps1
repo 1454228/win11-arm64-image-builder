@@ -19,29 +19,32 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-# Paths may be relative; they count from this file's folder (the repo root), whatever directory you launch from.
-$env:SRC_ISO     = "C:\Users\USER\Documents\DroidVMBuild\SW_DVD9_Win_Pro_11_25H2_Arm64_English_Pro_Ent_EDU_N_MLF_X24-13111.ISO"
-$env:DRIVERS_DIR = "https://github.com/HuJK/gunyah-guest-drivers-windows/releases/download/dev/gunyah-arm64-drivers.zip"
+
+
+
+$env:SRC_ISO       = "C:\Users\USER\Documents\DroidVMBuild\SW_DVD9_Win_Pro_11_25H2_Arm64_English_Pro_Ent_EDU_N_MLF_X24-13111.ISO"
 # $env:IMAGE_INDEX = "1"
-$env:OUT_QCOW    = "C:\Users\USER\Documents\DroidVMBuild\win11-droidvm-final.qcow2"
+$env:OUT_QCOW      = "win11-droidvm-final.qcow2"
+$env:OUT_VMPKG     = "win11-droidvm-final.vmpkg"
+$env:DRIVERS_DIR   = "https://github.com/HuJK/gunyah-guest-drivers-windows/releases/download/dev/gunyah-arm64-drivers.zip"
+$env:OPENSSH_SRC   = "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64-v10.0.0.0.msi"
 
-$env:DVM_USERNAME = "USER"        # Name of the local administrator account to create
-$env:DVM_PASSWORD = "DroidVM"     # Password (an empty password blocks RDP/SSH network logins)
-$env:SSH_PUBKEY  = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA root@ReplaceMe"
-$env:DISK_SIZE_MB = "40960"
-$env:COMPRESS = "0"   # 0 = plain qcow2 (default); 1 = zstd-compressed clusters (about half the size; needs the crosvm with qcow2 zstd read support)
-# $env:OUT_VMPKG = "win11-droidvm.vmpkg"   # also emit a ready-to-import .vmpkg (qcow2 + vms.json baked in; uses built-in tar.exe)
-# $env:VMPKG_COMPRESSION = "auto"   # auto (default) = zstd on all cores when tar.exe has libzstd (Win11), else single-threaded gzip; or zstd|gzip|none
-# $env:EMS_SAC_SOURCE = "skip"   # interactive SAC> runtime (EMS-SAC FoD): "skip" (default) = boot-EMS only, no SAC>; "online" = pulled from
-#                                #   Windows Update on the TARGET's first boot; "E:\" = ARM64 FoD ISO mount/folder -> injected offline (zero network)
+$env:DVM_USERNAME      = "USER"
+$env:DVM_PASSWORD      = "DroidVM"
+$env:SSH_PUBKEY        = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA root@ReplaceMe"
 
-$env:DRIVER_DIR     = "ZIP/drivers"                                       # Directory containing each driver subfolder
-$env:DRIVER_INSTALL = "NetKVM rdmapool pvmpower vioinput viostor vioscsi viosnd viofs" # Install only these (empty = all); must include the viostor/vioscsi boot drivers. viosnd=virtio-sound, viofs=virtio-fs (non-boot)
-$env:DRIVER_CERT    = "ZIP/DroidVM_Test.cer"                              # Specify signing certificate (empty = auto-extract from .cat)
+$env:DISK_SIZE_MB      = "40960" # 40GB
+$env:VMPKG_COMPRESSION = "auto"
+$env:EMS_SAC_SOURCE    = "online"
 
-$env:OPENSSH_SRC = "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64-v10.0.0.0.msi"
+$env:DRIVER_DIR     = "ZIP/drivers"
+$env:DRIVER_INSTALL = "NetKVM rdmapool pvmpower vioinput viostor vioscsi viosnd viofs"
+$env:DRIVER_CERT    = "ZIP/DroidVM_Test.cer"
 
 $env:PATH        = "C:\Program Files\qemu;" + $env:PATH
+
+
+
 
 Write-Host "==== DroidVM Windows builder (DISM offline driver injection) ====" -ForegroundColor Cyan
 & "$PSScriptRoot\windows\build.ps1"

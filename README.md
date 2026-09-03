@@ -86,6 +86,8 @@ SAC 走 ACPI SPCR,SPCR 由 edk2 依 crosvm 傳入的 SBSA UART FDT 節點生成,
     python3 pack-vmpkg.py --qcow2 out.qcow2 --config vms.json --out win11.vmpkg   # [--threads N]
     ```
   - 入口變數:`VMPKG_COMPRESSION`(Windows 預設 `auto`、macOS 預設 `gzip`;`COMPRESS=1` 時兩者預設改為 `none`,見下)、`VMPKG_THREADS`(0 = 全核)。
+- **網路**:`vms.json` 的 `networks[]` 每個 NIC 帶 `pkg_network_ref`,並可內嵌 `pkg_network`(app 的 NetworkConfig,schema 2)。打包器把定義搬到 manifest 頂層 `networks[]` 並標上同一個 ref,即 app 匯出的形狀。匯入時「existing」模式依 **name** 對應到裝置上既有的網路(預設模板指向 `br-wifi`),「auto」模式會照定義**新建**一個(name / bridge 撞名會加尾碼)。
+- **單一檔 ≥ 8 GiB**(未壓縮的 qcow2 就會):GNU tar 用 base-256 記大小,app 的 `TarReader` 讀成 0 → 匯入得到 **0 B 磁碟**。打包器改寫成 12 位八進位(app 自己的 `TarWriter` 就是這樣寫,GNU tar / bsdtar / Python 也讀得懂):Python 版任何壓縮都適用;PowerShell 版只有 `-Compression none` 能改(壓縮串流裡改不到),其他情況印警告。根本解法是 app 端 `TarReader.parseOctal` 補 base-256。
 - **qcow2 壓縮 × vmpkg 壓縮怎麼搭**(路線 A 同一顆映像實測;qcow2 zstd 需新版 crosvm 直讀):
 
   | | qcow2 | vmpkg | 匯入後裝置上的 qcow2 |

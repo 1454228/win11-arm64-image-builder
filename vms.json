@@ -37,5 +37,22 @@
     { "hardware": "sbsa",   "num": 1, "backend": "app_console", "console": true,  "usb_slot": 0 }
   ],
 
+  "networks": [
+    {
+      "pkg_network_ref": "net0",
+      "pkg_network": {
+        "schema": 2,
+        "name": "br-wifi",
+        "bridge_name": "br-wifi",
+        "bridge_type": "linux",
+        "uplink_mode": "l2",
+        "stp": false,
+        "auto_up": true,
+        "l2": { "uplink": "wlan0", "pseudo_bridge": true },
+        "l3": { "vlans": [] }
+      }
+    }
+  ],
+
   "boot": { "protocol": "uefi", "uefi": { "vars_enabled": true, "vars": "", "firmware": "" } }
 }

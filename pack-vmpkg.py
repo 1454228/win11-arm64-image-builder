@@ -258,8 +258,26 @@ def open_compressor(fileobj, comp, threads=None):
     raise SystemExit("unknown compression: %s" % comp)
 
 
+class AppTarInfo(tarfile.TarInfo):
+    """GNU tar (tarfile, bsdtar) stores an entry size >= 8 GiB in base-256 (0x80 ...), and the app's
+    TarReader.parseOctal turns that into 0 -> a 0-byte disk on import. The app's own TarWriter writes
+    such sizes as 12 octal digits filling the field (no NUL); its reader takes that, and so do GNU tar,
+    bsdtar and tarfile. Emit the same, so a > 8 GiB plain qcow2 imports on every app build."""
+
+    def tobuf(self, format=tarfile.DEFAULT_FORMAT, encoding=tarfile.ENCODING, errors="surrogateescape"):
+        buf = super().tobuf(format, encoding, errors)
+        if self.size <= 0o77777777777:
+            return buf
+        if self.size > 0o777777777777:
+            raise ValueError("entry too large for a 12-digit octal size: %d" % self.size)
+        hdr = bytearray(buf[-512:])
+        hdr[124:136] = b"%012o" % self.size
+        hdr[148:155] = b"%06o\0" % tarfile.calc_chksums(bytes(hdr))[0]   # byte 155 stays ' '
+        return buf[:-512] + bytes(hdr)
+
+
 def add_tar_bytes(tar, name, data):
-    ti = tarfile.TarInfo(name)
+    ti = AppTarInfo(name)
     ti.size = len(data)
     ti.mtime = 0
     ti.mode = 0o644
@@ -268,7 +286,7 @@ def add_tar_bytes(tar, name, data):
 
 def add_tar_file(tar, name, path):
     st = os.stat(path)
-    ti = tarfile.TarInfo(name)
+    ti = AppTarInfo(name)
     ti.size = st.st_size
     ti.mtime = 0
     ti.mode = 0o644
@@ -302,6 +320,19 @@ def main():
     # The exporter removes vm.disks (disks are promoted to the top level and rebuilt on import).
     vm.pop("disks", None)
     vm.pop("id", None)
+    # Networks: a NIC in vm.networks may carry its network's definition under "pkg_network". The app's
+    # exporter shape is: the definition in the top-level networks[] tagged with the NIC's pkg_network_ref
+    # (on import, mode "existing" maps the tag to a device network by name, "auto" creates the network).
+    pkg_networks = []
+    for nic in vm.get("networks") or []:
+        if not isinstance(nic, dict) or "pkg_network" not in nic:
+            continue
+        net = nic.pop("pkg_network")
+        ref = nic.get("pkg_network_ref")
+        if not ref:
+            raise SystemExit("vms.json: a NIC carrying pkg_network needs a pkg_network_ref")
+        net["pkg_network_ref"] = ref
+        pkg_networks.append(net)
 
     disk_name = args.disk_name or os.path.basename(args.qcow2)
     archive_path = sanitize_basename(disk_name)
@@ -328,7 +359,7 @@ def main():
         "vm": vm,
         "disks": [disk_entry],
         "boots": [],
-        "networks": [],
+        "networks": pkg_networks,
     }
     manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
     if len(manifest_bytes) > 0xFFFF:

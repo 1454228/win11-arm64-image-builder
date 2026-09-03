@@ -63,6 +63,33 @@ function Align-UpStrict([long]$v, [long]$a = 0x1000) {
     return $aligned
 }
 
+# tar.exe (GNU format) stores an entry size >= 8 GiB in base-256, which the app's TarReader parses as 0
+# -> a 0-byte disk on import. The app's own TarWriter writes such sizes as 12 octal digits filling the
+# field (no NUL); its reader takes that, and so do GNU tar / bsdtar / Python. Rewrite the disk entry's
+# header to that form. Only possible on an uncompressed blob: with zstd/gzip the header sits inside the
+# compressed stream (pack-vmpkg.py writes the header itself and needs no such step).
+function Repair-LargeTarSize([string]$Blob, [long]$HeaderOffset, [string]$Name, [long]$Size) {
+    if ($Size -gt 68719476735) { throw "entry too large for a 12-digit octal size: $Size" }   # 0o777777777777
+    $fs = [IO.File]::Open($Blob, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite)
+    try {
+        $hdr = New-Object byte[] 512
+        $fs.Position = $HeaderOffset
+        if ($fs.Read($hdr, 0, 512) -ne 512) { throw "short tar header at $HeaderOffset" }
+        $got = [Text.Encoding]::ASCII.GetString($hdr, 0, 100).TrimEnd([char]0)
+        if ($got -ne $Name) { throw "tar header at $HeaderOffset is '$got', expected '$Name'" }
+        if (($hdr[124] -band 0x80) -eq 0) { return $false }                     # already octal
+        $oct = [Text.Encoding]::ASCII.GetBytes([Convert]::ToString($Size, 8).PadLeft(12, '0'))
+        [Array]::Copy($oct, 0, $hdr, 124, 12)
+        for ($i = 148; $i -lt 156; $i++) { $hdr[$i] = 0x20 }                   # checksum field counts as spaces
+        $sum = 0; foreach ($b in $hdr) { $sum += $b }
+        $chk = [Text.Encoding]::ASCII.GetBytes([Convert]::ToString($sum, 8).PadLeft(6, '0'))
+        [Array]::Copy($chk, 0, $hdr, 148, 6); $hdr[154] = 0; $hdr[155] = 0x20
+        $fs.Position = $HeaderOffset
+        $fs.Write($hdr, 0, 512)
+        return $true
+    } finally { $fs.Close() }
+}
+
 function Write-Zero([IO.Stream]$stream, [long]$n) {
     $zero = New-Object byte[] 65536
     while ($n -gt 0) {
@@ -97,6 +124,22 @@ $vm = Get-Content -LiteralPath $Config -Raw -Encoding UTF8 | ConvertFrom-Json
 foreach ($k in @("disks", "id")) {
     if ($vm.PSObject.Properties[$k]) { $vm.PSObject.Properties.Remove($k) }
 }
+# Networks: a NIC in vm.networks may carry its network's definition under "pkg_network". The app's
+# exporter shape is: the definition in the top-level networks[] tagged with the NIC's pkg_network_ref
+# (on import, mode "existing" maps the tag to a device network by name, "auto" creates the network).
+$pkgNetworks = @()
+if ($vm.PSObject.Properties["networks"] -and $vm.networks) {
+    foreach ($nic in @($vm.networks)) {
+        $def = $nic.PSObject.Properties["pkg_network"]
+        if (-not $def) { continue }
+        $net = $def.Value
+        $nic.PSObject.Properties.Remove("pkg_network")
+        $ref = $nic.pkg_network_ref
+        if (-not $ref) { throw "vms.json: a NIC carrying pkg_network needs a pkg_network_ref" }
+        $net | Add-Member -NotePropertyName pkg_network_ref -NotePropertyValue $ref -Force
+        $pkgNetworks += $net
+    }
+}
 
 if (-not $DiskName) { $DiskName = [IO.Path]::GetFileName($Qcow2) }
 # Mirror the app's archive_path: the basename, stripped to a safe token.
@@ -123,7 +166,7 @@ $manifest = [ordered]@{
         bus          = "virtio"
     })
     boots            = @()
-    networks         = @()
+    networks         = @($pkgNetworks)
 }
 $manifestJson = $manifest | ConvertTo-Json -Depth 32
 $manifestBytes = [Text.Encoding]::UTF8.GetBytes($manifestJson)
@@ -156,6 +199,16 @@ try {
     & $tar.Source @tarArgs
     if ($LASTEXITCODE -ne 0) { throw "tar.exe failed with exit code $LASTEXITCODE" }
     $sw.Stop()
+    if ($diskSize -gt 8589934591) {                                            # > 0o77777777777: base-256 in the tar
+        if ($Compression -eq "none") {
+            $diskHdrOff = 512 + [Math]::Ceiling($manifestBytes.Length / 512) * 512   # after manifest.json's header + data
+            if (Repair-LargeTarSize $dataTmp $diskHdrOff $archivePath $diskSize) {
+                Write-Host "[vmpkg] disk >= 8 GiB: tar size field rewritten as 12-digit octal (the app's TarReader has no base-256)" -ForegroundColor DarkYellow
+            }
+        } else {
+            Write-Host "[vmpkg] WARNING: disk >= 8 GiB and the blob is compressed: tar.exe stored the size in base-256, which a DroidVM without base-256 support imports as a 0-byte disk. Use -Compression none (header gets rewritten), a COMPRESS=1 (zstd) qcow2 under 8 GiB, or an app build whose TarReader reads base-256." -ForegroundColor Yellow
+        }
+    }
     $dataSize = (Get-Item -LiteralPath $dataTmp).Length
 
     # --- assemble ------------------------------------------------------------------------

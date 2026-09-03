@@ -515,6 +515,10 @@ exit
     $stage = "$W\DroidVM"
     New-Item -ItemType Directory -Force $stage | Out-Null
     Copy-Item (Join-Path $HERE "setup-ssh.ps1") "$stage\setup-ssh.ps1" -Force
+    # First-logon half of the debloat (telemetry / services / tasks / Windows Update off + desktop
+    # enable_windows_update.bat); the offline half ran in step 6. Mirrors macos/debloat.ps1.
+    Copy-Item (Join-Path $HERE "debloat.ps1") "$stage\debloat.ps1" -Force
+    Write-Host "[debloat] staged debloat.ps1 (first logon: telemetry / services / tasks / Windows Update off)"
     # pvmpower devnode: pvmpower.sys binds to the root-enumerated ROOT\PVMPOWER, so the devnode must be created at first boot via SetupAPI
     # (INF/DISM injection does not create a devnode). Stage it if the driver zip has it, skip if not (older drivers lack pvmpower, which is normal).
     $pvmDevnode = Join-Path $zipRoot "pvmpower-devnode.ps1"

@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File windows_build.ps1   # 會自動提權
 2. 建 + 掛 VHDX,GPT 分割 ESP(FAT32)+ MSR + Windows(NTFS)
 3. `dism /Apply-Image` 套用映像
 4. `dism /Add-Driver /ForceUnsigned` 離線注入 `DRIVER_INSTALL` 指定的驅動;從 `.cat` 萃取簽章憑證 → `C:\DroidVM\certs`
-5. debloat:移除多餘 Appx、關 hibernate、開 RDP、停用 Reserved Storage(全部離線改 hive)
+5. debloat:移除多餘 Appx、關 hibernate、開 RDP、停用 Reserved Storage(全部離線改 hive);首次登入再由 `debloat.ps1` 關遙測 / 非必要服務 / 遙測排程 / Windows Update,並在該帳號桌面放 `enable_windows_update.bat`(想開回更新時跑一下,一次性)
 6. `bcdboot` + `bcdedit` 開 `testsigning` / `nointegritychecks`
 7. 放入 `unattend.xml`(注入帳號)+ staging `setup-ssh.ps1` / OpenSSH / `authorized_keys` / `pvmpower-devnode.ps1` → `C:\DroidVM`
 8. 卸載 VHDX → `qemu-img convert` 成 qcow2

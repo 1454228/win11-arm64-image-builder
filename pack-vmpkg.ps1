@@ -63,13 +63,14 @@ function Align-UpStrict([long]$v, [long]$a = 0x1000) {
     return $aligned
 }
 
-# tar.exe (GNU format) stores an entry size >= 8 GiB in base-256, which the app's TarReader parses as 0
-# -> a 0-byte disk on import. The app's own TarWriter writes such sizes as 12 octal digits filling the
-# field (no NUL); its reader takes that, and so do GNU tar / bsdtar / Python. Rewrite the disk entry's
-# header to that form. Only possible on an uncompressed blob: with zstd/gzip the header sits inside the
+# tar.exe (GNU format) stores an entry size >= 8 GiB in base-256, which app builds before commit c0dd376
+# (TarReader without base-256) parsed as 0 -> a 0-byte disk on import. The app's own TarWriter writes
+# such sizes as 12 octal digits filling the field (no NUL); every app build reads that, and so do GNU
+# tar / bsdtar / Python. Rewrite the disk entry's header to that form (up to 64 GiB - 1, what 12 octal
+# digits hold). Only possible on an uncompressed blob: with zstd/gzip the header sits inside the
 # compressed stream (pack-vmpkg.py writes the header itself and needs no such step).
 function Repair-LargeTarSize([string]$Blob, [long]$HeaderOffset, [string]$Name, [long]$Size) {
-    if ($Size -gt 68719476735) { throw "entry too large for a 12-digit octal size: $Size" }   # 0o777777777777
+    if ($Size -gt 68719476735) { return $false }                                # 0o777777777777: keep base-256
     $fs = [IO.File]::Open($Blob, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite)
     try {
         $hdr = New-Object byte[] 512
@@ -200,13 +201,15 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "tar.exe failed with exit code $LASTEXITCODE" }
     $sw.Stop()
     if ($diskSize -gt 8589934591) {                                            # > 0o77777777777: base-256 in the tar
+        $rewritten = $false
         if ($Compression -eq "none") {
             $diskHdrOff = 512 + [Math]::Ceiling($manifestBytes.Length / 512) * 512   # after manifest.json's header + data
-            if (Repair-LargeTarSize $dataTmp $diskHdrOff $archivePath $diskSize) {
-                Write-Host "[vmpkg] disk >= 8 GiB: tar size field rewritten as 12-digit octal (the app's TarReader has no base-256)" -ForegroundColor DarkYellow
-            }
+            $rewritten = Repair-LargeTarSize $dataTmp $diskHdrOff $archivePath $diskSize
+        }
+        if ($rewritten) {
+            Write-Host "[vmpkg] disk >= 8 GiB: tar size field rewritten as 12-digit octal, so app builds before c0dd376 import it too" -ForegroundColor DarkYellow
         } else {
-            Write-Host "[vmpkg] WARNING: disk >= 8 GiB and the blob is compressed: tar.exe stored the size in base-256, which a DroidVM without base-256 support imports as a 0-byte disk. Use -Compression none (header gets rewritten), a COMPRESS=1 (zstd) qcow2 under 8 GiB, or an app build whose TarReader reads base-256." -ForegroundColor Yellow
+            Write-Host "[vmpkg] note: disk >= 8 GiB with a base-256 tar size ($(if ($Compression -eq 'none') { '>= 64 GiB' } else { 'compressed blob' })): needs a DroidVM with base-256 tar sizes (app commit c0dd376 or later); older builds import it as a 0-byte disk" -ForegroundColor Yellow
         }
     }
     $dataSize = (Get-Item -LiteralPath $dataTmp).Length

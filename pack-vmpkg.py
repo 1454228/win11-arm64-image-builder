@@ -259,17 +259,20 @@ def open_compressor(fileobj, comp, threads=None):
 
 
 class AppTarInfo(tarfile.TarInfo):
-    """GNU tar (tarfile, bsdtar) stores an entry size >= 8 GiB in base-256 (0x80 ...), and the app's
-    TarReader.parseOctal turns that into 0 -> a 0-byte disk on import. The app's own TarWriter writes
-    such sizes as 12 octal digits filling the field (no NUL); its reader takes that, and so do GNU tar,
-    bsdtar and tarfile. Emit the same, so a > 8 GiB plain qcow2 imports on every app build."""
+    """GNU tar (tarfile, bsdtar) stores an entry size >= 8 GiB in base-256 (0x80 ...), which app builds
+    before commit c0dd376 (TarReader without base-256) turned into 0 -> a 0-byte disk on import. The
+    app's own TarWriter writes such sizes as 12 octal digits filling the field (no NUL); every app build
+    reads that, and so do GNU tar, bsdtar and tarfile. Emit the same up to 64 GiB - 1 (what 12 octal
+    digits hold); beyond that keep tarfile's base-256, which needs the fixed app."""
 
     def tobuf(self, format=tarfile.DEFAULT_FORMAT, encoding=tarfile.ENCODING, errors="surrogateescape"):
         buf = super().tobuf(format, encoding, errors)
         if self.size <= 0o77777777777:
             return buf
         if self.size > 0o777777777777:
-            raise ValueError("entry too large for a 12-digit octal size: %d" % self.size)
+            print("[vmpkg] note: %s is %.1f GiB (>= 64 GiB): tar size stays base-256, which needs a DroidVM with "
+                  "base-256 tar sizes (app commit c0dd376 or later)" % (self.name, self.size / 2**30))
+            return buf
         hdr = bytearray(buf[-512:])
         hdr[124:136] = b"%012o" % self.size
         hdr[148:155] = b"%06o\0" % tarfile.calc_chksums(bytes(hdr))[0]   # byte 155 stays ' '

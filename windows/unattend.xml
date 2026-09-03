@@ -127,10 +127,17 @@
           <Order>9</Order><Description>IPv6 SLAAC: EUI-64 interface identifier</Description>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "netsh interface ipv6 set global randomizeidentifiers=disabled; netsh interface ipv6 set privacy state=disabled; Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' } | Restart-NetAdapter -Confirm:$false"</CommandLine>
         </SynchronousCommand>
+        <!-- debloat 的首次登入半段（離線半段在 build.ps1 第 6 步）：關遙測 / 非必要服務 / 遙測排程 / Windows Update，
+             並把 enable_windows_update.bat 放到此帳號桌面（一次性）。必須排在 EMS-SAC 之前：它把 WU 關掉當基準，
+             setup-ems-sac.ps1 線上拉 FoD 時暫開，拉完照基準關回。 -->
+        <SynchronousCommand wcm:action="add">
+          <Order>10</Order><Description>debloat: telemetry / services / tasks / Windows Update off</Description>
+          <CommandLine>cmd /c if exist C:\DroidVM\debloat.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File C:\DroidVM\debloat.ps1</CommandLine>
+        </SynchronousCommand>
         <!-- EMS-SAC 工具集（互動式 SAC> 主控台的執行期）確保步驟。腳本會自我判斷：離線已注入就 no-op、
              未武裝線上安裝就 no-op；只有 build.ps1 8d 放了 ems-sac-online.flag 時才以 SYSTEM 從 WU 拉取。 -->
         <SynchronousCommand wcm:action="add">
-          <Order>10</Order><Description>ensure EMS-SAC toolset (FoD)</Description>
+          <Order>11</Order><Description>ensure EMS-SAC toolset (FoD)</Description>
           <CommandLine>cmd /c if exist C:\DroidVM\setup-ems-sac.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File C:\DroidVM\setup-ems-sac.ps1</CommandLine>
         </SynchronousCommand>
       </FirstLogonCommands>

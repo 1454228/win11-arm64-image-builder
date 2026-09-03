@@ -60,6 +60,8 @@ function Disable-WU {
     & sc.exe config wuauserv start= disabled | Out-Null
     reg add "HKLM\SYSTEM\CurrentControlSet\Services\WaaSMedicSvc" /v Start /t REG_DWORD /d 4 /f | Out-Null
     reg add "HKLM\SYSTEM\CurrentControlSet\Services\UsoSvc"       /v Start /t REG_DWORD /d 4 /f | Out-Null
+    # debloat.ps1's baseline also carries the NoAutoUpdate policy, which Enable-WU deleted; put it back.
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v NoAutoUpdate /t REG_DWORD /d 1 /f | Out-Null
 }
 
 # Do the actual servicing. Re-enable WU around the pull, then RESTORE whatever WU state was

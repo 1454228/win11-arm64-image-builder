@@ -5,10 +5,6 @@
 #   Usage:  powershell -ExecutionPolicy Bypass -File windows_build.ps1
 # =====================================================================
 $ErrorActionPreference = 'Stop'
-# This process only (env var, nothing persisted, GPO still wins): the .ps1 files this one calls next
-# (windows\build.ps1, pack-vmpkg.ps1) would otherwise each prompt again when they carry the
-# mark-of-the-web under an Unrestricted policy. This script's own prompt happens before line 1 and
-# can only be avoided by launching with -ExecutionPolicy Bypass or by Unblock-File.
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -20,8 +16,8 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-# Paths may be relative (they count from this file's folder, the repo root, whatever directory you launch from)
-# and may use %VAR% or $env:VAR (e.g. "$env:USERPROFILE\Downloads\win11.iso").
+
+
 $env:SRC_ISO       = "%USERPROFILE%\Downloads\SW_DVD9_Win_Pro_11_25H2_Arm64_English_Pro_Ent_EDU_N_MLF_X24-13111.ISO"
 # $env:IMAGE_INDEX = "1"
 $env:OUT_QCOW      = "win11-droidvm-final.qcow2"

@@ -66,8 +66,10 @@ function Resolve-InputFile([string]$Src, [string]$SaveAs = "") {
         }
         return $dst
     }
-    # Relative paths count from the repo root (where windows_build.ps1 lives), and the result is always a full
-    # path: CIM cmdlets such as Mount-DiskImage ignore PowerShell's current location and fail on a relative one.
+    # %VAR% is expanded (PowerShell itself never does), relative paths count from the repo root (where
+    # windows_build.ps1 lives), and the result is always a full path: CIM cmdlets such as Mount-DiskImage
+    # ignore PowerShell's current location and fail on a relative one.
+    $Src = [Environment]::ExpandEnvironmentVariables($Src)
     if (-not [IO.Path]::IsPathRooted($Src)) { $Src = Join-Path $ROOT $Src }
     if (-not (Test-Path -LiteralPath $Src)) { throw "file not found: $Src" }
     return (Resolve-Path -LiteralPath $Src).ProviderPath
@@ -95,6 +97,35 @@ function Expand-ZipToken([string]$Path, [string]$ZipRoot) {
     if ($Path -match '^ZIP[\\/](.*)$') { return ($ZipRoot.TrimEnd('\', '/') + '\' + ($Matches[1] -replace '/', '\')) }
     if (-not [IO.Path]::IsPathRooted($Path)) { return (Join-Path $ROOT $Path) }   # plain relative: from the repo root
     return $Path
+}
+
+# qemu-img: QEMU for Windows installs to %ProgramFiles%\qemu without touching PATH, so look there before giving
+# up. When it is missing, offer 'winget install SoftwareFreedomConservancy.QEMU' (a current qemu-img with zstd;
+# the 'cloudbase.qemu-img' package on winget is 2.3.0 and cannot write compression_type=zstd). QEMU_IMG_INSTALL=1
+# skips the question; 0/false/no/off or unset asks.
+function Ensure-QemuImg([string]$AutoInstall) {
+    $qemuDir = Join-Path $env:ProgramFiles "qemu"
+    if (-not (Get-Command qemu-img -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $qemuDir "qemu-img.exe"))) {
+        $env:PATH = "$qemuDir;" + $env:PATH
+    }
+    if (Get-Command qemu-img -ErrorAction SilentlyContinue) { return }
+    $pkg = "SoftwareFreedomConservancy.QEMU"
+    if ($AutoInstall) {
+        Write-Host "[qemu-img] not found; QEMU_IMG_INSTALL is set -> winget install $pkg" -ForegroundColor Yellow
+    } else {
+        $ans = Read-Host "[qemu-img] not found. Install QEMU for Windows now (winget install $pkg)? [y/N]"
+        if ($ans -notmatch '^\s*y(es)?\s*$') {
+            throw "qemu-img not found: install QEMU for Windows (winget install $pkg) or set QEMU_IMG_INSTALL=1 to let the build install it"
+        }
+    }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "winget not found; install QEMU for Windows by hand: https://www.qemu.org/download/#windows" }
+    $wargs = @("install", "--id", $pkg, "-e", "--accept-source-agreements", "--accept-package-agreements")
+    Show-CommandLine "winget" $wargs
+    & winget @wargs
+    # Not gated on winget's exit code ("already installed" is non-zero too): what matters is the binary.
+    $env:PATH = "$qemuDir;" + $env:PATH
+    if (-not (Get-Command qemu-img -ErrorAction SilentlyContinue)) { throw "qemu-img still not found after winget (expected $qemuDir\qemu-img.exe; winget exit code $LASTEXITCODE)" }
+    Write-Host "[qemu-img] $((Get-Command qemu-img).Source)" -ForegroundColor Green
 }
 
 # --- Helpers ---
@@ -206,13 +237,18 @@ $OUT_QCOW    = if ($env:OUT_QCOW)    { $env:OUT_QCOW }         else { Join-Path 
 # (pure PowerShell + the built-in tar.exe). See repo README.
 $OUT_VMPKG   = if ($env:OUT_VMPKG)   { $env:OUT_VMPKG }        else { "" }
 $VMS_JSON    = if ($env:VMS_JSON)    { $env:VMS_JSON }         else { Join-Path $ROOT "vms.json" }
-# Relative output/config paths resolve against the repo root, not the elevated shell's CWD (system32).
+# %VAR% in output/config paths is expanded (PowerShell itself never does); relative ones resolve against the
+# repo root, not the elevated shell's CWD (system32).
+$OUT_QCOW  = [Environment]::ExpandEnvironmentVariables($OUT_QCOW)
+$OUT_VMPKG = [Environment]::ExpandEnvironmentVariables($OUT_VMPKG)
+$VMS_JSON  = [Environment]::ExpandEnvironmentVariables($VMS_JSON)
 if (-not [IO.Path]::IsPathRooted($OUT_QCOW))                  { $OUT_QCOW  = Join-Path $ROOT $OUT_QCOW }
 if ($OUT_VMPKG -and -not [IO.Path]::IsPathRooted($OUT_VMPKG)) { $OUT_VMPKG = Join-Path $ROOT $OUT_VMPKG }
 if (-not [IO.Path]::IsPathRooted($VMS_JSON))                  { $VMS_JSON  = Join-Path $ROOT $VMS_JSON }
 $VMPKG_COMPRESSION = if ($env:VMPKG_COMPRESSION) { $env:VMPKG_COMPRESSION } else { "auto" }   # auto = zstd on all cores when tar.exe has libzstd (Win11), else gzip
 $VMPKG_THREADS = if ($env:VMPKG_THREADS) { [int]$env:VMPKG_THREADS } else { 0 }               # zstd threads, 0 = all
 $COMPRESS    = if ($env:COMPRESS -and $env:COMPRESS -notmatch '^(0|false|no|off)$') { $env:COMPRESS } else { "" }   # 1 = zstd-compress the qcow2 clusters (step 9); 0/false/no/off/unset = off
+$QEMU_IMG_INSTALL = if ($env:QEMU_IMG_INSTALL -and $env:QEMU_IMG_INSTALL -notmatch '^(0|false|no|off)$') { $env:QEMU_IMG_INSTALL } else { "" }   # 1 = winget-install QEMU without asking when qemu-img is missing
 $LETTER_ESP  = if ($env:LETTER_ESP)  { $env:LETTER_ESP }       else { Get-FreeDriveLetter }
 $LETTER_WIN  = if ($env:LETTER_WIN)  { $env:LETTER_WIN }       else { Get-FreeDriveLetter @($LETTER_ESP) }
 # Driver install list/cert (mirrors macOS): DRIVER_DIR=directory containing the per-driver subfolders (ZIP/ = driver zip extraction root);
@@ -245,9 +281,10 @@ $SSH_PUBKEY   = if ($env:SSH_PUBKEY)   { $env:SSH_PUBKEY }      else { "" }
 $OPENSSH_SRC  = if ($env:OPENSSH_SRC)  { $env:OPENSSH_SRC }     else { "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64-v10.0.0.0.msi" }
 Write-Host "[disk] drive letters: ESP=$LETTER_ESP Windows=$LETTER_WIN"
 
-foreach ($t in @("dism", "bcdboot", "diskpart", "qemu-img")) {
-    if (-not (Get-Command $t -ErrorAction SilentlyContinue)) { throw "$t not found (qemu-img needs QEMU for Windows installed and on PATH)" }
+foreach ($t in @("dism", "bcdboot", "diskpart")) {
+    if (-not (Get-Command $t -ErrorAction SilentlyContinue)) { throw "$t not found" }
 }
+Ensure-QemuImg $QEMU_IMG_INSTALL
 if (-not $SRC_ISO) { throw "Invalid SRC_ISO: set the Win11 ARM64 ISO (URL or local path) in windows_build.ps1" }
 $SRC_ISO = Resolve-InputFile $SRC_ISO "win11-arm64.iso"
 

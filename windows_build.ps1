@@ -1,6 +1,7 @@
 # =====================================================================
 # windows_build.ps1 — entry point for Route A (x64 Windows). Edit the variables below to your own, then right-click "Run as administrator",
-#   Requirements: x64 Windows (administrator), built-in dism/bcdboot/diskpart, qemu-img (QEMU for Windows on PATH).
+#   Requirements: x64 Windows (administrator), built-in dism/bcdboot/diskpart, qemu-img (QEMU for Windows; when it is
+#   missing the build offers to install it with winget -- set QEMU_IMG_INSTALL=1 to skip the question).
 #   Usage:  powershell -ExecutionPolicy Bypass -File windows_build.ps1
 # =====================================================================
 $ErrorActionPreference = 'Stop'
@@ -19,9 +20,8 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-
-
-
+# Paths may be relative (they count from this file's folder, the repo root, whatever directory you launch from)
+# and may use %VAR% or $env:VAR (e.g. "$env:USERPROFILE\Downloads\win11.iso").
 $env:SRC_ISO       = "C:\Users\USER\Documents\DroidVMBuild\SW_DVD9_Win_Pro_11_25H2_Arm64_English_Pro_Ent_EDU_N_MLF_X24-13111.ISO"
 # $env:IMAGE_INDEX = "1"
 $env:OUT_QCOW      = "win11-droidvm-final.qcow2"
@@ -42,6 +42,7 @@ $env:DRIVER_INSTALL = "NetKVM rdmapool pvmpower vioinput viostor vioscsi viosnd 
 $env:DRIVER_CERT    = "ZIP/DroidVM_Test.cer"
 
 $env:PATH        = "C:\Program Files\qemu;" + $env:PATH
+# $env:QEMU_IMG_INSTALL = "1"   # qemu-img missing -> winget install QEMU for Windows without asking
 
 
 

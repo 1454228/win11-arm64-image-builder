@@ -103,7 +103,7 @@ SAC 走 ACPI SPCR,SPCR 由 edk2 依 crosvm 傳入的 SBSA UART FDT 節點生成,
 ## 需求
 
 - **macOS:** `brew install qemu wimlib xorriso colima docker`;另需約 **50 GB** 可用空間放中間產物(工作 qcow2 / 安裝 ISO / 驅動,位於 `macos/files`)。testsigning 的 BCD patch 用 Colima 容器內的 hivex 代跑,故無需另一台 Linux
-- **Windows:** x64 Windows(系統管理員)、內建 `dism` / `bcdboot` / `diskpart`、`qemu-img`(QEMU for Windows,需在 PATH)
+- **Windows:** x64 Windows(系統管理員)、內建 `dism` / `bcdboot` / `diskpart`、`qemu-img`(QEMU for Windows;沒裝的話 build 會問要不要 `winget install SoftwareFreedomConservancy.QEMU`,設 `QEMU_IMG_INSTALL=1` 免問直接裝。winget 上另一個 `cloudbase.qemu-img` 是 2.3.0,寫不了 zstd,別用)
 
 ## 結構
 

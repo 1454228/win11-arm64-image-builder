@@ -42,7 +42,7 @@ $env:DRIVER_INSTALL = "NetKVM rdmapool pvmpower vioinput viostor vioscsi viosnd 
 $env:DRIVER_CERT    = "ZIP/DroidVM_Test.cer"
 
 $env:PATH        = "C:\Program Files\qemu;" + $env:PATH
-# $env:QEMU_IMG_INSTALL = "1"   # qemu-img missing -> winget install QEMU for Windows without asking
+$env:QEMU_IMG_INSTALL = "1"
 
 
 

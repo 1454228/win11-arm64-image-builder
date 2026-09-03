@@ -4,7 +4,7 @@
   "hypervisor": "auto",
   "protected_vm": "protected_without_firmware",
 
-  "memory_mb": 3072,
+  "memory_mb": 4096,
   "swiotlb_mb": 256,
   "cpu_count": 4,
   "cpu_topology_auto": true,
@@ -19,12 +19,14 @@
   "balloon": false,
   "rng": true,
 
+  "screens": {
+    "simplefb": { "enabled": true,  "exporter": "native", "input_enabled": true, "width": 1280, "height": 720, "poll_hz": 60 },
+    "gpu-0":    { "enabled": false, "exporter": "native", "input_enabled": true, "width": 1280, "height": 720, "refresh_rate": 60, "dpi_h": 160, "dpi_v": 160 }
+  },
+  "display_blit_provider": "TURNIP",
   "display_enabled": true,
   "native_display_enabled": true,
   "display_backend": "simplefb",
-  "display_width": 1280,
-  "display_height": 720,
-  "display_blit_provider": "TURNIP",
   "gpu_enabled": false,
   "vnc_enabled": false,
   "auto_up": false,

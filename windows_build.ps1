@@ -22,7 +22,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 # Paths may be relative (they count from this file's folder, the repo root, whatever directory you launch from)
 # and may use %VAR% or $env:VAR (e.g. "$env:USERPROFILE\Downloads\win11.iso").
-$env:SRC_ISO       = "C:\Users\USER\Documents\DroidVMBuild\SW_DVD9_Win_Pro_11_25H2_Arm64_English_Pro_Ent_EDU_N_MLF_X24-13111.ISO"
+$env:SRC_ISO       = "%USERPROFILE%\Downloads\SW_DVD9_Win_Pro_11_25H2_Arm64_English_Pro_Ent_EDU_N_MLF_X24-13111.ISO"
 # $env:IMAGE_INDEX = "1"
 $env:OUT_QCOW      = "win11-droidvm-final.qcow2"
 $env:OUT_VMPKG     = "win11-droidvm-final.vmpkg"

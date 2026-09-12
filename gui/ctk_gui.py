@@ -559,8 +559,9 @@ class DroidVMBuilderApp(ctk.CTk):
 
     # ---------- 事件 ----------
     def _on_lang_change(self, lang):
+        # 切语言前先把当前用户输入暂存，避免重渲染后丢失
+        self._saved_values = self._collect_fields()
         set_lang(lang)
-        # 重新渲染界面文字
         self.title(T("APP_TITLE"))
         self._set_status(T("STATUS_READY"))
         self._render_config()

@@ -40,6 +40,13 @@ if ($sshInstalled) {
     Set-Service sshd      -StartupType Automatic
     Set-Service ssh-agent -StartupType Automatic -ErrorAction SilentlyContinue
 
+    # sshd's default shell is cmd.exe; switch it to Windows PowerShell so `ssh host <cmd>` and interactive sessions land in PowerShell.
+    # (OpenSSH picks -Command instead of /c on its own once the shell is not cmd.exe. scp/sftp are unaffected: sftp is a subsystem,
+    #  and scp in OpenSSH 9+ speaks the SFTP protocol rather than going through the shell.)
+    if (-not (Test-Path 'HKLM:\SOFTWARE\OpenSSH')) { New-Item -Path 'HKLM:\SOFTWARE\OpenSSH' -Force | Out-Null }
+    New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -PropertyType String -Force `
+        -Value "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" | Out-Null
+
     # An administrator account key is not read from the home directory but from administrators_authorized_keys, and the ACL must contain only SYSTEM+Administrators
     if (Test-Path 'C:\DroidVM\authorized_keys') {
         $ak = 'C:\ProgramData\ssh\administrators_authorized_keys'

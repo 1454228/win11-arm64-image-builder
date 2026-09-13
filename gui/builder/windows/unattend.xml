@@ -1,0 +1,154 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Windows-Arm64-DroidVM-Builder — DISM 离线部署用 unattend（首次开机跑 OOBE）。
+ 基于 WOA-Project unattend 改写。
+
+ 功能：
+ - 建 USER 账号（支持密码 / 无密码）
+ - 密码不过期 (PasswordExpires=False)
+ - 自动登录 (AutoLogon)
+ - 自动开 RDP + 防火墙放行 + 允许多会话 + 允许无密码 RDP
+ - 自动设置语言/地区/时区（由 build.ps1 根据本机值替换占位符）
+ - 跳过 OOBE 所有交互页面
+ - 汇入驱动签名凭证
+ - 永不睡眠 / 永不关屏幕
+
+ 注意：所有 component 的 processorArchitecture 必须是 arm64。
+ 占位符（由 build.ps1 替换）：
+   @@USERNAME@@    用户名
+   @@PASSWORD@@    密码（空则为无密码账户）
+   @@HASPASSWORD@@ 1=有密码 0=无密码
+   @@COMPUTERNAME@@ 计算机名（默认 DROIDVM，由 build.ps1 替换）
+   @@TIMEZONE@@     时区 (如 China Standard Time)
+   注意：不再覆盖系统语言，保持镜像原语言
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+ <settings pass="specialize">
+  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="arm64"
+   publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+   <ComputerName>@@COMPUTERNAME@@</ComputerName>
+  </component>
+  <component name="Microsoft-Windows-Deployment" processorArchitecture="arm64"
+   publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+   <RunSynchronous>
+    <RunSynchronousCommand wcm:action="add">
+     <Order>1</Order>
+     <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE" /v BypassNRO /t REG_DWORD /d 1 /f</Path>
+    </RunSynchronousCommand>
+    <RunSynchronousCommand wcm:action="add">
+     <Order>2</Order>
+     <Path>cmd /c for %i in (C:\DroidVM\certs\*.cer) do certutil -addstore -f Root "%i"</Path>
+    </RunSynchronousCommand>
+    <RunSynchronousCommand wcm:action="add">
+     <Order>3</Order>
+     <Path>cmd /c for %i in (C:\DroidVM\certs\*.cer) do certutil -addstore -f TrustedPublisher "%i"</Path>
+    </RunSynchronousCommand>
+   </RunSynchronous>
+  </component>
+ </settings>
+ <settings pass="oobeSystem">
+  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="arm64"
+   publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+   <OEMInformation>
+    <SupportURL>http://www.microsoft.com/</SupportURL>
+   </OEMInformation>
+   <OOBE>
+    <HideEULAPage>true</HideEULAPage>
+    <HideLocalAccountScreen>true</HideLocalAccountScreen>
+    <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+    <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+    <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+    <NetworkLocation>Home</NetworkLocation>
+    <ProtectYourPC>3</ProtectYourPC>
+    <SkipMachineOOBE>true</SkipMachineOOBE>
+    <SkipUserOOBE>true</SkipUserOOBE>
+   </OOBE>
+   <UserAccounts>
+    <LocalAccounts>
+     <LocalAccount wcm:action="add">
+      <Name>@@USERNAME@@</Name>
+      <Group>Administrators</Group>
+      <DisplayName>@@USERNAME@@</DisplayName>
+      <Password><Value>@@PASSWORD@@</Value><PlainText>true</PlainText></Password>
+     </LocalAccount>
+    </LocalAccounts>
+   </UserAccounts>
+   <AutoLogon>
+    <Username>@@USERNAME@@</Username>
+    <Enabled>true</Enabled>
+    <LogonCount>999</LogonCount>
+    <Password><Value>@@PASSWORD@@</Value><PlainText>true</PlainText></Password>
+   </AutoLogon>
+   <RegisteredOwner>@@USERNAME@@</RegisteredOwner>
+   <DisableAutoDaylightTimeSet>false</DisableAutoDaylightTimeSet>
+   <FirstLogonCommands>
+    <!-- 1. 持久自动登录 -->
+    <SynchronousCommand wcm:action="add">
+     <Order>1</Order>
+     <Description>persistent autologon</Description>
+     <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d 1 /f</CommandLine>
+    </SynchronousCommand>
+    <SynchronousCommand wcm:action="add">
+     <Order>2</Order>
+     <Description>persistent autologon user</Description>
+     <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d @@USERNAME@@ /f</CommandLine>
+    </SynchronousCommand>
+    <SynchronousCommand wcm:action="add">
+     <Order>3</Order>
+     <Description>persistent autologon password</Description>
+     <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "@@PASSWORD@@" /f</CommandLine>
+    </SynchronousCommand>
+    <!-- 2. 开启 RDP -->
+    <SynchronousCommand wcm:action="add">
+     <Order>4</Order>
+     <Description>Enable RDP</Description>
+     <CommandLine>reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f</CommandLine>
+    </SynchronousCommand>
+    <!-- 3. 允许多会话 -->
+    <SynchronousCommand wcm:action="add">
+     <Order>5</Order>
+     <Description>Allow Multiple Sessions</Description>
+     <CommandLine>reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fSingleSessionPerUser /t REG_DWORD /d 0 /f</CommandLine>
+    </SynchronousCommand>
+    <!-- 4. 允许无密码账户进行 RDP 登录（仅当无密码时生效） -->
+    <SynchronousCommand wcm:action="add">
+     <Order>6</Order>
+     <Description>Allow No Password Sessions</Description>
+     <CommandLine>reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f</CommandLine>
+    </SynchronousCommand>
+    <!-- 5. 防火墙放行 RDP -->
+    <SynchronousCommand wcm:action="add">
+     <Order>7</Order>
+     <Description>Allow RDP on the network</Description>
+     <CommandLine>netsh advfirewall firewall set rule group="remote desktop" new enable=yes</CommandLine>
+    </SynchronousCommand>
+    <!-- 6. 密码不过期 -->
+    <SynchronousCommand wcm:action="add">
+     <Order>8</Order>
+     <Description>Disable Password Expiration</Description>
+     <CommandLine>cmd /c wmic UserAccount where Name="@@USERNAME@@" set PasswordExpires=False</CommandLine>
+    </SynchronousCommand>
+    <!-- 7. pvmpower devnode -->
+    <SynchronousCommand wcm:action="add">
+     <Order>9</Order>
+     <Description>pvmpower devnode</Description>
+     <CommandLine>cmd /c if exist C:\DroidVM\pvmpower-devnode.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File C:\DroidVM\pvmpower-devnode.ps1</CommandLine>
+    </SynchronousCommand>
+    <!-- 8. 电源：永不睡眠、永不关屏幕 -->
+    <SynchronousCommand wcm:action="add">
+     <Order>10</Order>
+     <Description>power: never sleep / never turn off display</Description>
+     <CommandLine>cmd /c powercfg /change standby-timeout-ac 0 &amp; powercfg /change standby-timeout-dc 0 &amp; powercfg /change monitor-timeout-ac 0 &amp; powercfg /change monitor-timeout-dc 0</CommandLine>
+    </SynchronousCommand>
+   </FirstLogonCommands>
+  </component>
+  <!-- 注意：不包含 Microsoft-Windows-International-Core，保持镜像原语言不被覆盖 -->
+  <component name="Microsoft-Windows-TimeZone" processorArchitecture="arm64"
+   publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+   <TimeZone>@@TIMEZONE@@</TimeZone>
+  </component>
+ </settings>
+</unattend>

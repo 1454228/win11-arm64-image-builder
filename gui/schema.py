@@ -10,11 +10,14 @@ UI 表单的每一个字段都映射到 windows/build.ps1 读取的环境变量�
    label_zh, label_en, help_zh, help_en)
   - section   : 分组 key（仅用于代码组织，新版 GUI 不再显式按 section 出标题）
   - key       : 内部字段名（也用作配置 json 的 key）
-  - type      : text | int | password | bool | textarea | file | save | path_or_url | hidden
+  - type      : text | int | password | bool | textarea | file | save | path_or_url | hidden | internal
   - default   : 默认值（bool 用 True/False，其余用字符串）
   - env_var   : 传给 build.ps1 的环境变量名（空字符串表示不传）
-  - label_*   : 界面上显示的中文/英文名称（hidden 类型可填空）
+  - label_*   : 界面上显示的中文/英文名称（hidden/internal 类型可填空）
   - help_*    : 中文/英文提示文字
+  - 注:
+      hidden   = GUI 内部使用（如 DRIVER_INSTALL 由勾选框生成），可被 collect 读取
+      internal = 完全内置、固定值（如 DRIVER_DIR=ZIP/drivers），不被用户/保存值覆盖
 """
 from i18n import T, get_lang
 
@@ -60,8 +63,9 @@ FIELDS = [
      "Gunyah/VirtIO 驱动包或下载链接",
      "Gunyah/VirtIO driver package or download URL"),
 
-    # 驱动包内子目录：新版 GUI 自动探测，不再展示给用户
-    ("drivers", "DRIVER_DIR", "hidden", "ZIP/drivers", "DRIVER_DIR",
+    # 驱动包内子目录：脚本内置约定为 ZIP/drivers（即提取后的驱动包根目录里的 drivers 子目录）
+    # 设为 internal：GUI 永远强制注入 "ZIP/drivers"，不被用户或已保存配置覆盖，避免相对路径找不到目录。
+    ("drivers", "DRIVER_DIR", "internal", "ZIP/drivers", "DRIVER_DIR",
      "", "", "", ""),
 
     # 要安装的驱动：GUI 渲染成勾选框组，env 以空格/逗号分隔传递
@@ -100,11 +104,21 @@ FIELDS = [
      "Optional: enable key-based login (otherwise password only)"),
 
     # ---------- 输出 ----------
-    ("output", "OUT_QCOW", "save", "Windows.qcow2", "OUT_QCOW",
+    # 默认留空：build.ps1 会自动把输出放到空闲最大的非系统盘（优先 D: 的 D:\DroidVM\Windows.qcow2）。
+    # 用户填了绝对路径则以用户为准（可显式指到 D: 等大盘）。
+    ("output", "OUT_QCOW", "save", "", "OUT_QCOW",
      "输出路径",
      "Output path",
-     "",
-     ""),
+     "留空=自动放到空闲最大的盘（优先 D:）；也可手动填 D:\\xxx.qcow2",
+     "Empty=auto-place on the drive with most free space (prefer D:); or set e.g. D:\\xxx.qcow2"),
+
+    # 临时工作目录（VHDX 在此生成/挂载）。留空时 build.ps1 自动选最佳数据盘（优先 D:\droidvm_tmp），
+    # 彻底规避 C: 空间不足导致的 DISM "磁盘空间不足" (exit 433)。
+    ("output", "BUILD_TMP", "text", "", "BUILD_TMP",
+     "临时目录(可选)",
+     "Temp dir (optional)",
+     "留空=自动选最佳盘（优先 D:）；也可手动指到更大的盘，例如 D:\\droidvm_tmp",
+     "Empty=auto-pick best drive (prefer D:); or set e.g. D:\\droidvm_tmp"),
 
     # GUI 以 GB 显示，但存到该字段时仍转回 MB 注入 build.ps1
     ("output", "DISK_SIZE_MB", "int", "40960", "DISK_SIZE_MB",
@@ -154,8 +168,12 @@ def default_values():
 def build_env(fields):
     """把表单字段转成要注入 build.ps1 的环境变量 dict（忽略空值）。"""
     env = {}
-    for _sec, key, _typ, _default, env_var, _lzh, _len, _hzh, _hen in FIELDS:
+    for _sec, key, typ, default, env_var, _lzh, _len, _hzh, _hen in FIELDS:
         if not env_var:
+            continue
+        # internal 字段：固定为默认值，绝不被用户/保存配置覆盖（如 DRIVER_DIR=ZIP/drivers）
+        if typ == "internal":
+            env[env_var] = str(default)
             continue
         val = fields.get(key, "")
         if isinstance(val, bool):

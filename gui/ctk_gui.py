@@ -47,6 +47,9 @@ from schema import (  # noqa: E402
 DEFAULTS_FILE = HERE / "defaults.json"
 PID_FILE = HERE / "build.pid"
 
+# 默认输出路径：放在用户主目录下（本地、可写），避免写进程序目录
+DEFAULT_OUTPUT = Path.home() / "DroidVM" / "Windows.qcow2"
+
 
 def _quote_ps(s):
     return '"' + s.replace('"', '`"') + '"'
@@ -91,18 +94,6 @@ class DroidVMBuilderApp(ctk.CTk):
         self._poll_log()
 
     # ---------- 工具 / 探测 ----------
-    @staticmethod
-    def _find_repo():
-        p = HERE
-        for _ in range(5):
-            if (p / "windows" / "build.ps1").is_file():
-                return str(p)
-            parent = p.parent
-            if parent == p:
-                break
-            p = parent
-        return str(HERE)
-
     def _set_status(self, text):
         self.status_var.set(text)
 
@@ -446,6 +437,8 @@ class DroidVMBuilderApp(ctk.CTk):
 
         # --- 输出路径 ---
         self._add_labeled_entry(self.form_container, "OUT_QCOW", browse_kind="save")
+        # --- 临时目录（可选；C: 空间不足时指到更大的盘）---
+        self._add_labeled_entry(self.form_container, "BUILD_TMP", browse_kind="dir", hint=True)
 
         # --- 高级区（SSH 公钥、时区、OpenSSH、证书、仓库根目录）---
         adv_card = ctk.CTkFrame(self.form_container)
@@ -475,23 +468,6 @@ class DroidVMBuilderApp(ctk.CTk):
         self._add_labeled_entry(self.advanced_frame, "TARGET_TIMEZONE")
         # SSH 公钥
         self._add_textarea(self.advanced_frame, "SSH_PUBKEY")
-        # 仓库根目录
-        repo_row = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
-        repo_row.pack(fill="x", pady=4)
-        repo_row.columnconfigure(1, weight=1)
-        ctk.CTkLabel(repo_row, text=T("REPO_ROOT") + ":", width=90, anchor="w").grid(
-            row=0, column=0, sticky="w"
-        )
-        self.repo_var = tk.StringVar(value=str(self._find_repo()))
-        ctk.CTkEntry(repo_row, textvariable=self.repo_var, height=32).grid(
-            row=0, column=1, sticky="ew", padx=(8, 0)
-        )
-        ctk.CTkButton(
-            repo_row,
-            text=T("BROWSE"),
-            width=70,
-            command=self._browse_repo,
-        ).grid(row=0, column=2, padx=(8, 0))
 
         # 自动配置提示框（类似 WPF 的浅灰色信息区）
         info_card = ctk.CTkFrame(self.form_container, fg_color=("gray90", "gray20"))
@@ -535,6 +511,8 @@ class DroidVMBuilderApp(ctk.CTk):
                 cmd = lambda vv=var: self._browse_file(vv)
             elif browse_kind == "path_or_url":
                 cmd = lambda vv=var: self._browse_path_or_url(vv)
+            elif browse_kind == "dir":
+                cmd = lambda vv=var: self._browse_dir(vv)
             else:
                 cmd = lambda vv=var: self._browse_file(vv)
             ctk.CTkButton(row, text=T("BROWSE"), width=70, command=cmd).grid(
@@ -622,10 +600,10 @@ class DroidVMBuilderApp(ctk.CTk):
         if f:
             var.set(f)
 
-    def _browse_repo(self):
+    def _browse_dir(self, var):
         d = filedialog.askdirectory(title=T("SELECT_FOLDER"))
         if d:
-            self.repo_var.set(d)
+            var.set(d)
 
     # ---------- 自动探测事件 ----------
     def _on_iso_changed(self):
@@ -680,8 +658,8 @@ class DroidVMBuilderApp(ctk.CTk):
         threading.Thread(target=task, daemon=True).start()
 
     def _apply_driver_info(self, subdir, drivers):
-        if subdir is not None:
-            self.fields["DRIVER_DIR"] = tk.StringVar(value=subdir)
+        # 注意：DRIVER_DIR 是 internal 字段，固定为 "ZIP/drivers"（脚本约定），
+        # 这里只根据探测结果刷新“要安装的驱动”勾选列表，绝不修改 DRIVER_DIR。
         if drivers:
             self.available_drivers = drivers
             self._render_driver_checkboxes(drivers)
@@ -716,6 +694,12 @@ class DroidVMBuilderApp(ctk.CTk):
             except Exception:
                 pass
 
+        # 输出路径：若无有效值，默认放到用户主目录下的 DroidVM/
+        if "OUT_QCOW" in self.fields:
+            cur = self.fields["OUT_QCOW"].get().strip()
+            if not cur or cur == "Windows.qcow2":
+                self.fields["OUT_QCOW"].set(str(DEFAULT_OUTPUT))
+
         # 驱动安装列表：从保存值勾选
         if vals.get("DRIVER_INSTALL"):
             selected = {x.strip() for x in str(vals["DRIVER_INSTALL"]).replace(",", " ").split()}
@@ -730,6 +714,10 @@ class DroidVMBuilderApp(ctk.CTk):
         defaults = default_values()
 
         for _sec, key, typ, default, _env, _lzh, _len, _hzh, _hen in FIELDS:
+            if typ == "internal":
+                # 内置固定字段（如 DRIVER_DIR=ZIP/drivers），始终用默认值，不被覆盖
+                data[key] = str(default)
+                continue
             if typ == "bool":
                 v = self.fields.get(key, tk.BooleanVar(value=bool(default))).get()
                 data[key] = v
@@ -755,6 +743,10 @@ class DroidVMBuilderApp(ctk.CTk):
         # 驱动勾选 -> 空格分隔字符串
         selected = [name for name, var in self.driver_vars.items() if var.get()]
         data["DRIVER_INSTALL"] = " ".join(selected)
+
+        # 输出路径：无有效值时默认到用户主目录
+        if not data.get("OUT_QCOW") or data.get("OUT_QCOW") == "Windows.qcow2":
+            data["OUT_QCOW"] = str(DEFAULT_OUTPUT)
 
         return data
 
@@ -798,7 +790,6 @@ class DroidVMBuilderApp(ctk.CTk):
                 pass
         self._saved_values = {}
         self._populate_fields()
-        self.repo_var.set(str(self._find_repo()))
         self._set_status(T("RESET_DONE"))
 
     # ---------- 构建 ----------
@@ -812,15 +803,16 @@ class DroidVMBuilderApp(ctk.CTk):
             messagebox.showwarning(T("ERROR"), T("NO_ISO"))
             return
 
-        repo = self.repo_var.get().strip() or str(self._find_repo())
-        if not (Path(repo) / "windows" / "build.ps1").is_file():
+        # 构建引擎随程序自带的 gui/builder/windows/build.ps1（无需仓库根目录）
+        build_ps1 = HERE / "builder" / "windows" / "build.ps1"
+        if not build_ps1.is_file():
             messagebox.showwarning(
                 T("ERROR"),
-                f"windows/build.ps1 not found under:\n{repo}",
+                T("NO_ENGINE").format(str(build_ps1)),
             )
             return
 
-        cfg = {"repo_root": repo, "fields": fields}
+        cfg = {"fields": fields}
         cfg_path = HERE / "build_config.json"
         log_path = HERE / "build.log"
         self.log_path = str(log_path)
@@ -845,7 +837,6 @@ class DroidVMBuilderApp(ctk.CTk):
             str(HERE / "run_build.py"),
             "--config", str(cfg_path),
             "--log", str(log_path),
-            "--repo", repo,
         ]
         args_ps = ",".join(_quote_ps(a) for a in arglist)
         ps_cmd = (

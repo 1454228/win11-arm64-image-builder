@@ -1,0 +1,21 @@
+{
+  "fields": {
+    "SRC_ISO": "C:/Users/USER/Desktop/install.esd",
+    "IMAGE_INDEX": "0",
+    "DRIVERS_DIR": "C:/Users/USER/Desktop/gunyah-arm64-drivers.zip",
+    "DRIVER_DIR": "ZIP/drivers",
+    "DRIVER_INSTALL": "NetKVM pvmpower rdmapool viofs vioinput viorng vioscsi vioserial viosnd viosock viostor",
+    "DRIVER_CERT": "",
+    "DVM_USERNAME": "Tiny",
+    "DVM_PASSWORD": "",
+    "DVM_COMPUTERNAME": "Tiny11",
+    "SSH_PUBKEY": "",
+    "OUT_QCOW": "D:/w.qcow2",
+    "BUILD_TMP": "",
+    "DISK_SIZE_MB": "51200",
+    "COMPRESS": false,
+    "DEBLOAT": false,
+    "TARGET_TIMEZONE": "",
+    "OPENSSH_SRC": ""
+  }
+}

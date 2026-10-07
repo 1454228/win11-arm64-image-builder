@@ -1,0 +1,95 @@
+=== DroidVM build started ===
+bundled build engine=C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\build.ps1
+env vars injected: BUILD_TMP, DISK_SIZE_MB, DRIVERS_DIR, DRIVER_DIR, DRIVER_INSTALL, DVM_COMPUTERNAME, DVM_PASSWORD, DVM_USERNAME, IMAGE_INDEX, OUT_QCOW, SRC_ISO
+===========================
+
+[preflight] [preflight] scanning for stale DroidVM build virtual disks ...
+[preflight] [preflight] done
+Transcript started, output file is C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\build_direct.log
+[log] transcript -> C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\build_direct.log
+[locale] Language   : (keep image default, not overridden)
+[locale] TimeZone   : Pacific Standard Time
+==== DroidVM Windows builder (DISM offline driver injection) ====
+[config] ISO=C:/Users/USER/Desktop/install.wim
+[config] Output=C:\Users\USER\DroidVM\Windows.qcow2
+[config] Username=USER
+[config] ComputerName=DROIDVM
+[config] DiskSize=40960 MB
+[config] Drivers=C:\Users\USER\Downloads\gunyah-arm64-drivers.zip
+[config] Compress=no
+[config] Debloat=no (????)
+[disk] drive letters: ESP=W Windows=X
+
+[qemu-img] using bundled: C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\..\tools\qemu-img\qemu-img.exe
+[source] C:\Users\USER\Desktop\install.wim is a raw WIM file - skipping ISO mount
+[warn] drive C: free 18.4 GB < estimated need 36 GB; DISM may fail with 'not enough disk space' (exit 433). Enable COMPRESS and/or reduce DiskSize.
+> New-Item -ItemType Directory -Force D:\tmp
+[work] temp dir = D:\tmp
+[files] already extracted: C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\files\gunyah-arm64-drivers
+[drivers] dir=C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\files\gunyah-arm64-drivers\drivers  install=NetKVM pvmpower rdmapool viofs vioinput viorng vioscsi vioserial viosnd viosock viostor  cert=(auto from .cat)
+[image] using WIM directly: C:\Users\USER\Desktop\install.wim
+[iso] image format: WIM
+> dism.exe /Get-WimInfo /WimFile:C:\Users\USER\Desktop\install.wim
+[image] one edition only -> index 1 (Windows 10 ???)
+[image] using index 1
+[mem] WARNING: ???????? 4023MB????? 2.2GB ???????? 4GB,DISM/wimlib ??????? / OOM ???
+[mem] ????????(??????):
+[mem]   1) ???????? GUI / ??? / ???(???? 1GB+)????????? PowerShell????? build.ps1,???????? GUI ????
+[mem]   2) ???????????? 8GB,???????????
+[mem]   3) ?? apply ???? >2GB ?????
+[disk] creating and partitioning VHDX (max 40960 MB) ...
+[disk] planned drive letters: ESP=W Windows=X
+[disk] vhdmp already Running
+[disk] starting FsDepends (virtual disk provider), current=Stopped
+[disk] WARN: failed to start FsDepends: Failed to start service 'File System Dependency Minifilter (FsDepends)'.
+> diskpart /s C:\Users\USER\AppData\Local\Temp\droidvm_dp\part_create.txt
+> diskpart script:
+    create vdisk file="D:\tmp\w11_20260925_074227_6048.vhdx" maximum=40960 type=expandable
+    select vdisk file="D:\tmp\w11_20260925_074227_6048.vhdx"
+    attach vdisk
+    exit
+    
+    Microsoft DiskPart version 10.0.26100.1
+    
+    Copyright (C) Microsoft Corporation.
+    On computer: DROIDVM
+    
+    DiskPart has encountered an error: A virtual disk support provider for the specified file was not found.
+    See the System Event Log for more information.
+> diskpart /s C:\Users\USER\AppData\Local\Temp\droidvm_dp\detach.txt
+> diskpart script:
+    select vdisk file="D:\tmp\w11_20260925_074227_6048.vhdx"
+    detach vdisk
+    exit
+
+Microsoft DiskPart version 10.0.26100.1
+
+Copyright (C) Microsoft Corporation.
+On computer: DROIDVM
+
+DiskPart has encountered an error: The system cannot find the file specified.
+See the System Event Log for more information.
+
+There is no virtual disk selected.
+> Remove-Item -Recurse -Force D:\tmp -ErrorAction SilentlyContinue
+[cleanup] ???????(??????),??
+[info] ?? ISO ???????...
+failed to initialize/partition VHDX after attach (diskpart output:
+Microsoft DiskPart version 10.0.26100.1
+Copyright (C) Microsoft Corporation.
+On computer: DROIDVM
+DiskPart has encountered an error: A virtual disk support provider for the specified file was not found.
+See the System Event Log for more information.
+At C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\build.ps1:894 char:23
++ ... ot $disk) { throw ("failed to initialize/partition VHDX after attach  ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (failed to initi...re information.:String) [], RuntimeException
+    + FullyQualifiedErrorId : failed to initialize/partition VHDX after attach (diskpart output:
+Microsoft DiskPart version 10.0.26100.1
+Copyright (C) Microsoft Corporation.
+On computer: DROIDVM
+DiskPart has encountered an error: A virtual disk support provider for the specified file was not found.
+See the System Event Log for more information.
+ 
+
+=== EXIT CODE: 1 ===

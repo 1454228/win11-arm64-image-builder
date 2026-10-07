@@ -1,0 +1,5 @@
+﻿create: Formatting 'C:\Users\USER\WorkBuddy\W11A64DVMB\bench.vhdx', fmt=vhdx size=314572800 log_size=1048576 block_size=0
+convert 300MB vhdx->qcow2: 1.7 s; out=0.2 MB
+throughput ~ 180.0 MB/s
+extrapolated 8GB (8192MB) ~ 0.8 min (non-compressed)
+convert -c 300MB -> 1.7 s (compressed)

@@ -1,0 +1,9 @@
+﻿Admin: False
+--- qemu-img procs ---
+none
+--- mounted vhdx ---
+err: 无法处理命令，因为一个或多个强制参数丢失:  ImagePath。
+--- droidvm_tmp ---
+err: 找不到路径“D:\droidvm_tmp”，因为该路径不存在。
+--- D: root ---
+

@@ -1,0 +1,4 @@
+select vdisk file="D:\droidvm_tmp\w11_20260919_103910_9744.vhdx"
+offline vdisk noerr
+detach vdisk
+exit

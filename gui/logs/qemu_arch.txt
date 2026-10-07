@@ -1,0 +1,14 @@
+﻿=== find qemu-img.exe on system ===
+
+FullName                                                                                                                    Length
+--------                                                                                                                    ------
+C:\Users\USER\Desktop\Windows-ARM64-DroidVM-Builder\tools\qemu-img\qemu-img.exe                                            1932408
+C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\tools\qemu-img\qemu-img.exe                                                 1932408
+C:\Users\USER\WorkBuddy\W11A64DVMB\Windows-ARM64-DroidVM-Builder\Windows-ARM64-DroidVM-Builder\tools\qemu-img\qemu-img.exe 1932408
+
+
+
+=== PE arch check for found qemu-img ===
+C:\Users\USER\Desktop\Windows-ARM64-DroidVM-Builder\tools\qemu-img\qemu-img.exe -> x64
+C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\tools\qemu-img\qemu-img.exe -> x64
+C:\Users\USER\WorkBuddy\W11A64DVMB\Windows-ARM64-DroidVM-Builder\Windows-ARM64-DroidVM-Builder\tools\qemu-img\qemu-img.exe -> x64

@@ -1,0 +1,14 @@
+﻿
+----- SAMPLE 1 (11:00:07) -----
+  qemu-img RUNNING PID=9776 CPU(s)=563 WS=19MB Start=09/19/2026 10:50:01
+  D: FreeMB=32424
+  C: FreeMB=11887
+  qcow2: (none yet)
+  vhdx: w11_20260919_103910_9744.vhdx 8.254GB mtime=09/19/2026 10:54:30
+----- SAMPLE 2 (after 12s) (11:00:19) -----
+  qemu-img RUNNING PID=9776 CPU(s)=575 WS=19MB Start=09/19/2026 10:50:01
+  D: FreeMB=32424
+  C: FreeMB=11887
+  qcow2: (none yet)
+  vhdx: w11_20260919_103910_9744.vhdx 8.254GB mtime=09/19/2026 10:54:30
+VERIFY_DONE

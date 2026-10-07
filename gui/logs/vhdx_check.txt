@@ -1,0 +1,4 @@
+﻿=== attached vhdx (Get-Disk Location) ===
+NONE attached
+=== leftover w11*.vhdx under D:\ and C:\Users\USER\WorkBuddy ===
+NONE

@@ -1,0 +1,11 @@
+﻿=== TEST1: list disk (capture with *>) ===
+=== TEST2: create+attach (capture with *>) ===
+=== vhdx file created? => False
+=== Get-Disk after ===
+
+Number FriendlyName   OperationalStatus Location                               
+------ ------------   ----------------- --------                               
+     0 Red Hat VirtIO Online            Integrated : Bus 0 : Device 3 : Func...
+
+
+DONE

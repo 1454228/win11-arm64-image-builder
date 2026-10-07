@@ -1,0 +1,339 @@
+;
+; Copyright (C) 2026 anonymix007
+;
+; virtio_wddm_rs.inf - 983 = 982 KMD + Turnip WSI present thread / linear swapchain.
+; KMD = 976 accounting (3 nodes, BlobHost3D, no Graphics GpuMmu).
+; Turnip ARM64/ARM64EC = 983: GDI present on its own thread + linear swapchain image (no per-frame buffer blit). KMD 982 unchanged.
+;
+; 984: UMD file logging default off, opt-in via VIRTIO_WDDM_LOG_FILE; per-present logs demoted to VERBOSE
+; 985: WSI present: tiled+blit default, present thread, no same-queue CPU wait before submit, single SetDIBitsToDevice, fault->DEVICE_LOST (TU_WSI_LINEAR/TU_WIN_SUBMIT_CPU_WAIT/TU_WSI_GDI_DIB for A/B)
+; 986: WSI present: DIB section back to default (SetDIBitsToDevice direct path measured no gain, TU_WSI_GDI_DIRECT=1 for A/B); present thread + no same-queue CPU wait before submit + fault->DEVICE_LOST kept from 985
+; 987: P0 diagnostics build (KMD_DIAGNOSTICS=1): count blt present local-copy eligibility and last-seen blob formats/strides in Bringup registry; no behavior change (kmd-blt-present-plan.md P0)
+; 988: P0 diagnostics round 2: eligibility classifier accepts MAP_COHERENT 3D dst (standard allocation), records dst kind/flags/layout stride; counts standard allocation types. No behavior change.
+; 989: P1 blt present local copy (diagnostics build): src linear guest blob + dst STAGINGSURFACE 3D -> KMD memcpy with R/B swizzle on the handler thread, no virtio traffic; PresentLocalCopy=0 registry kill switch
+; 990: P1 local copy + fence-level diagnostics (submit/run/done fence slots, periodic publish from the handler thread); investigating present hang on 989
+; 991: P1 diag: record which side/status fails kernel mapping (990 showed MapFail on every eligible present, virgl fallback works)
+; 992: P1: dst kernel mapping via IoAllocateMdl+PFN fill (MmAllocateMdlForIoSpace rejects RAM ranges -> every eligible present hit MapFail on 990/991)
+; 993: P1: Cached CPU mapping for CpuVisible 3D standard allocations (DXGI Lock readback of the staging surface was 4.2 ms/frame uncached); copy/wait time sums in diagnostics
+; 994: P1 release build (no bringup diagnostics): blt present local copy + Cached staging surfaces; 1164x681 blt 92 -> 334-381 fps (flip 432), window readback 0 errors
+; 995: D3D12 UMD dx12um_virtio (P1 skeleton), slot 3; D3D12Enable default 1
+; 996: D3D12 UMD P1: CreateDevice passes runtime validation (depth format bits, MSAA levels, row-major alignment)
+; 997: D3D12 P2: heaps/resources, descriptors, root signatures, DXIL-container PSOs, command lists, queue fence bridge (scheme C)
+; 998: D3D12 P2: IAT tracer for the runtime's D3DKMT sync calls (VIRTIO_WDDM_LOG_KMT=1)
+; 999: D3D12 P2 fix: single runtime queue context (broadcast signal completes on the first context; probe bcast/gatesignal evidence)
+; 1000: D3D12 P2: KMT tracer now hooks d3dkmt delay imports by ordinal
+; 1001: D3D12 P2: KMT tracer hooks d3dkmt delay imports by ordinal (1000 was stale)
+; 1002: D3D12 P2 diag: per-ECL log + timestamped KMT trace
+; 1003: D3D12 P2 diag: log 3D RTV args
+; 1004: D3D12 P2 diag: log rtv/clear handle addresses
+; 1005: D3D12 P2 diag: dump rtv desc slot before/after vkd3d write
+; 1006: D3D12 P2 diag: detect unwritten rtv desc
+; 1007: D3D12: resolve committed buffer heap size sentinel before allocation
+; 1008: DXIL: handle switches without a common post-dominator
+; 1009: D3D12: accept stream output declarations without GS bytecode
+; 1010: D3D12: match DXIL stream outputs using DDI register coordinates
+; 1011: fix resolveIsNanCheck unary operand bounds
+; 1012: guard unary FIsNan in resolveIdentityCompareOp
+; 1013: guard unary identity compare operands
+; 1014: diagnose NIR source insertion validation
+; 1015: identify ir3 NIR pass corrupting cs_uav_store
+; 1016: diagnose null NIR SSA source
+; 1017: handle missing SPIR-V function call scalar SSA with undef
+; 1018: diagnose direct UDiv call null parameter
+; 1019: diagnose NIR null source object layout
+; 1020: fill missing SPIR-V call parameters with typed undef
+; 1021: return invalid shader when SPIR-V to NIR conversion fails
+; 1022: inline SPIR-V helper functions before Turnip lowering
+; 1023: fix typed undefined SPIR-V call arguments without function inlining
+; 1024: fix missing scalar SPIR-V call arguments with typed undef
+; 1025: diagnose remaining NIR NULL source
+; 1026: diagnose NIR NULL source in add_defs_uses
+; 1027: fix missing composite SPIR-V call argument leaves
+; 1028: diagnose missing SPIR-V call parameter type
+; 1029: inline repaired typed SPIR-V helper call arguments
+; 1030: inline helper calls after lowering returns and initializers
+; 1031: lower typed helper undef arguments to zero before IR3
+; 1032: lower compute helper undef arguments before IR3
+; 1033: use typed zero for missing SPIR-V helper arguments
+; 1034: Log SPIR-V conversion errors for compute pipeline failures
+; 1035: Fix malformed SPIR-V UDiv helper types
+; 1036: Fix stale ARM64EC entrypoint object rebuild and restore Turnip ICD
+; 1037: MapHeap: keep committed UNKNOWN-layout textures undisclosed without reporting a DDI failure
+; 1038: 3D image copy, blit, and clear use the r3d path
+; 1039: Turnip: keep 3D clear layer at zero when each slice is selected by the MRT base
+; 1040: Turnip: route unaligned 3D texture uploads through 3D blit ops
+; 1041: A8XX TEX_LINE_OFFSET is expressed in bits; fix 3D buffer upload pitch
+; 1042: D24 copy diagnostics: log copy locations, barriers, and command-list HRESULT
+; 1043: D24 trace: log DSV creation, depth clear, and dispatch entry points
+; 1044: D3D12 allocation info: map tight alignment and preserve invalid allocation sentinel
+; 1045: Record EXT_dgc stage mask for ExecuteIndirect diagnostics
+; 1046: DX12 default enabled; restore compute ExecuteIndirect fallback when EXT_dgc is unavailable
+; 1047: ExecuteIndirect compute fallback: lower compute root state through per-dispatch UBO when DGC is unavailable
+; 1048: ExecuteIndirect compute fallback: honor predication in state-template dispatches
+; 1049: ExecuteIndirect compute fallback: preserve command ordering and root state rebinding
+; 1050: ExecuteIndirect compute template cleanup: release DGC buffers only when created
+; 1052: Restore buffer DDI data size after allocation info experiment
+; 1053: P3 D3D12 primary allocation and flip present
+; 1054: P3 use D3D12 allocation callbacks for primary
+; 1055: P3 single-context D3D12 flip present
+; 1056: P3 primary lifetime and current refresh rate
+; 1057: D3D12 P3 primary resource retirement and present logging cleanup
+; 1058: P4 queue shutdown and VirtIO reset ordering
+; 1059: P4 reset epoch: gate stale channels and rebuild VirtIO queues after TDR
+; 1061: P4 TDR reset breadcrumb stages for callback, worker join, VirtIO reset, and restart
+; 1062: D3D12: implement calibrated GPU clock from QPC
+; 1063: D3D12 resource allocation span sizing trial
+; 1064: D3D12 allocation layout diagnostic
+; 1065: D3D12 allocation alignment diagnostic
+; 1066: D3D12 resource allocation alignment fixes
+; 1067: D3D12 resource allocation: clamp buffer resource alignment to 64 KiB
+; 1068: translate DDI heap properties and normalize buffer allocation queries
+; 1069: Report unsupported CPU-visible depth texture as invalid request
+; 1070: Restore validated 1068 resource behavior
+; 1071: Remove allocation query debug logging
+; 1072: Map committed texture from vkd3d CPU staging memory
+; 1073: Expose CPU staging layout for committed textures
+; 1074: Restore validated D3D12 resource path; keep DX12 enabled
+; 1075: D3D12 recover small placed texture alignment from validated allocation info
+; 1077: Retain validated small texture alignment; withdraw ineffective MSAA caps experiment
+; 1078: D3D12 implement pipeline library storage serialization and reload
+; 1079: D3D12 translate tessellation factor semantic indices
+; 1080: Allow unnamed passthrough hull shader entry during quirk lookup
+; 1086: restore verified UMD after failed alignment experiment
+; 1087: Report 16-bit minimum shader precision for non-native min16float pipelines.
+; 1088: Advertise gapless SM 6.2 for non-native FP16 DXIL pipelines and 16-bit minimum precision.
+; 1089: Allow GPU_UPLOAD depth textures through the staging-copy path.
+; 1090: Preserve GPU_UPLOAD heap type for depth texture staging copies
+; 1097: Restore validated 1090 UMD after unsuccessful Map experiments
+; 1098: D3D12 DDI 0041: report 64 KiB MSAA placement support
+; 1099: MapHeap: expose vkd3d CPU staging address for custom textures
+; 1100: MapHeap: use vkd3d CPU staging address for custom textures; restore ARM64X entry point
+; 1101: Map custom CPU textures through a vkd3d placed heap span
+; 1102: Reject unsupported CPU-visible committed textures without a runtime KMT mapping
+; 1103: Reject CPU-visible committed COMMON textures without a runtime KMT mapping
+; 1104: Reject CPU-visible committed COMMON textures with E_INVALIDARG when runtime KMT mapping is unavailable
+; 1105: Report programmable sample positions tier 1 to unlock MSAA resources born in RESOLVE_DEST
+; 1106: Forward ClearState to the inner command list so root constants stop leaking across ClearState
+; 1107: Give the runtime the real host pointer and inner subresource layout for CPU-visible heap textures
+; 1108: Report row-major texture support: CPU-visible heap textures are linear host memory, unlocking runtime Map(NULL)
+; 1109: Also report 64K standard swizzle to open the runtime Map(NULL) gate
+; 1110: Revert the texture layout caps experiment: keep the host pointer and layout plumbing, gates stay off
+; 1111: EXPERIMENT: MapHeap fails for CPU-visible committed textures
+; 1112: KMT trace: enumerate the runtime's D3DKMT delay imports
+; 1113: KMT trace: wrap CreateAllocation and Lock
+; 1114: KMT trace: wrap CreateAllocation and Lock
+; 1115: Route CPU-visible committed textures through the runtime allocator to mint a KMT allocation
+; 1116: Reuse the ICD's blob in the committed-texture allocation
+; 1117: Wrap CPU-visible committed textures in pSystemMem KMT allocations
+; 1118: Wrap CPU-visible committed textures in pSystemMem KMT allocations
+; 1119: Wrap CPU-visible committed textures in pSystemMem KMT allocations
+; 1120: Call the D3D12 AllocateCb variant for the sysmem wrap
+; 1121: Gate the sysmem wrap behind VIRTIO_WDDM_SYSMEM_WRAP=1
+; 1122: Log the sysmem wrap gate decision
+; 1123: Give the sysmem wrap an aperture residency segment
+; 1124: Wrap lazily from MapHeap where the runtime resource handle is live
+; 1125: Wrap lazily from MapHeap where the runtime resource handle is live
+; 1127: Restore clean D3D12 UMD after resolve diagnostics
+; 1129: Restore clean resolve path; WARP reproduces renderpass array layer 1 failure
+; 1130: Preserve explicit byte address wrapping on Turnip
+; 1131: Honor literal drirc engine alternatives without a regex library
+; 1132: Use EXT primitive restart index for D3D12 strip cut values
+; 1133: Honor strip cut values independently of index format
+; 1134: Support sliced 3D storage image views in Turnip
+; 1135: Use explicit attachment clears under native conditional rendering
+; 1136: Predicate single-sample color texture CopyResource through GPU scratch buffers
+; 1137: Preserve destination bytes for predicated direct color resolves
+; 1138: Expand custom border color storage and advertised limit to 8192 entries
+; 1139: Pad experimental sysmem allocation request to common KMD envelope
+; 1140: Keep sysmem wrappers local and retire runtime allocation before backing
+; 1141: Return existing resource kernel allocation handles
+; 1142: Associate experimental sysmem backing during resource creation
+; 1143: Report linear CPU texture staging layout to runtime
+; 1144: Select CPU linear layout before native resource creation
+; 1145: Upload native runtime CPU texture writes when unmapping
+; 1146: Flush CPU staging writes and upload textures at native heap unmap
+; 1147: Submit native CPU texture uploads before releasing resource ownership
+; 1148: Publish persistently mapped texture writes before command execution
+; 1149: Wrap scalar raw-buffer component addresses before descriptor robustness
+; 1150: Align Windows GPU virtual address reservations to 64 KiB
+; 1151: Use 64 KiB chunked backing directly for BOs of 2 MiB or larger
+; 1152: Implement DDI 0098 argument and function table bridge for independent devices
+; 1154: Rollback unverified 1153 runtime buffer and global allocation bridge experiment; restore exact 1152 binaries for AIO hang investigation
+; 1155: Prevent flip DPC preemption deadlock by raising IRQL around async queue producer lock
+; 1156: Clear root arguments without discarding the initial graphics pipeline
+; 1163: Recovery package restoring user-confirmed AIO baseline 1156 after ExecuteIndirect diagnostic timeout; not deployed
+; 1164: ExecuteIndirect graphics fallback candidate without temporary diagnostics, ARM64 only
+; 1165: Block render-pass resume across ExecuteIndirect GPU parameter patch dispatch
+; 1166: ExecuteIndirect graphics root-state fallback on both architectures; vbo_offsets ARM64 28/0; vkd3d 7dda3395
+; 1167: Use raw root CBV addresses for GPU ExecuteIndirect state fallback without DGC
+; 1168: Expose RGBA8 alongside BGRA8 VidPN source modes for DXGI mode enumeration
+; 1170: Restore 1168 RGBA8 candidate for continued 3DMark diagnosis per user request
+; 1171: D3D9On12: stage ordinary present surfaces in runtime allocations
+; 1172: D3D9On12: retire blt present copy before entering kernel present
+; 1173: D3D9On12: runtime-backed shareable render targets for FLIPEX
+; 1174: Add x86 D3D12 UMD, Vulkan loader and Turnip for system D3D9On12
+; 1175: Declare no native D3D9 UMD so Windows selects system D3D9On12 without application proxies
+; 1180: Copy WDDM commands into queue-owned DMA buffers before publication
+; 1181: Diagnostic: audit WDDM physical DMA addresses and submission ranges
+; 1182: Diagnostic: compare original WDDM DMA bytes on host and guest before completion
+; 1183: Diagnostic: correlate DMA completion addresses, hashes and ARM translation attributes
+; 1184: Stage WDDM DMA commands in a reusable cached arena until virtqueue completion
+; 1185: Add x86 D3D10/11 UMD and system Vulkan/OpenGL ICD registration
+; 1186: Complete WoW OpenGL ICD version and flags
+; 1190: Restore 1186 baseline after inconclusive residency experiments
+; 1192: Restore production baseline after passive fence diagnostics
+; 1193: Diagnostic: bound UMA UMD memory pool chunks to 32 MiB
+; 1194: Apply verified UMA UMD 32 MiB chunk policy to ARM64EC and x86
+; 1195: Diagnostic: release empty UMA UMD pool chunks without retention
+; 1196: UMA UMD residency fixes: bounded chunks and prompt empty-chunk reclamation on all architectures
+; 1198: Diagnostic KMD BlobHost3D local budget accounting; revert native 8MiB experiment
+; 1199: Diagnostic guest aperture non-local budget group; host blobs remain local
+; 1211: UMD: submit deferred private-image clears before command-list completion
+; 1212: UMD: flush RTV clear immediately to release destroyed WebGL images
+; 1213: UMD: retain imported Vulkan image ownership until DXVK releases queued references
+; 1214: UMD: flush private-image clears at command-list completion; no imported handle ownership change
+; 1215: diagnostic image create/destroy logging only
+; 1216: vdrm diagnostics: trace BO creation and close via DebugView
+; 1217: Rebuild current rolled-back sources for Aquarium fullscreen baseline; not a leak fix
+; 1219: Drain D3D11 runtime deferred destruction at Present and Flush
+; 1220: Submit pending offscreen clears at UMD command boundaries
+
+[Version]
+Signature="$Windows NT$"
+Class=Display
+ClassGUID={4d36e968-e325-11ce-bfc1-08002be10318}
+Provider=%ManufacturerName%
+DriverVer=10/03/2026,20.15.1.1220
+CatalogFile=virtio_wddm_rs.cat
+PnpLockdown=1
+
+[DestinationDirs]
+VirtioGpu_Files.Driver = 13
+VirtioGpu_Files.Usermode = 13
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+freedreno_icd.x86.json = 1,,
+droidvm_opengl_x86.dll = 1,,
+dx11um_virtio_x86.dll = 1,,
+vulkan_freedreno_x86.dll = 1,,
+droidvm_vulkan_x86.dll = 1,,
+dx12um_virtio_x86.dll = 1,,
+virtio_wddm_rs.sys = 1,,
+dx11um_virtio.dll = 1,,
+dx11um_virtio_arm64.dll = 1,,
+dx11um_virtio_arm64ec.dll = 1,,
+dx12um_virtio.dll = 1,,
+dx12um_virtio_arm64.dll = 1,,
+dx12um_virtio_arm64ec.dll = 1,,
+vulkan_freedreno.dll = 1,,
+vulkan_freedreno_arm64.dll = 1,,
+vulkan_freedreno_arm64ec.dll = 1,,
+droidvm_vulkan.dll = 1,,
+droidvm_vulkan_arm64.dll = 1,,
+droidvm_vulkan_arm64ec.dll = 1,,
+droidvm_opengl.dll = 1,,
+droidvm_opengl_arm64.dll = 1,,
+droidvm_opengl_arm64ec.dll = 1,,
+freedreno_icd.arm64x.json = 1,,
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTarm64.10.0...16299
+
+[Standard.NTarm64.10.0...16299]
+%VirtioGpu.DeviceDesc% = VirtioGpu_Inst, PCI\VEN_1AF4&DEV_1050&SUBSYS_10501AF4&REV_01
+
+[VirtioGpu_Files.Driver]
+virtio_wddm_rs.sys,,,2
+
+[VirtioGpu_Files.Usermode]
+freedreno_icd.x86.json,,,0
+droidvm_opengl_x86.dll,,,0
+dx11um_virtio_x86.dll,,,0
+vulkan_freedreno_x86.dll,,,0
+droidvm_vulkan_x86.dll,,,0
+dx12um_virtio_x86.dll,,,0
+dx11um_virtio.dll,,,0
+dx11um_virtio_arm64.dll,,,0
+dx11um_virtio_arm64ec.dll,,,0
+dx12um_virtio.dll,,,0
+dx12um_virtio_arm64.dll,,,0
+dx12um_virtio_arm64ec.dll,,,0
+vulkan_freedreno.dll,,,0
+vulkan_freedreno_arm64.dll,,,0
+vulkan_freedreno_arm64ec.dll,,,0
+droidvm_vulkan.dll,,,0
+droidvm_vulkan_arm64.dll,,,0
+droidvm_vulkan_arm64ec.dll,,,0
+droidvm_opengl.dll,,,0
+droidvm_opengl_arm64.dll,,,0
+droidvm_opengl_arm64ec.dll,,,0
+freedreno_icd.arm64x.json,,,0
+
+[VirtioGpu_Inst]
+Include=msdv.inf
+FeatureScore=F9
+CopyFiles=VirtioGpu_Files.Driver, VirtioGpu_Files.Usermode
+AddReg=VirtioGpu_DeviceSettings
+
+[VirtioGpu_Inst.Services]
+AddService = VirtioGpu,0x00000002,VirtioGpu_Service_Inst, VirtioGpu_EventLog_Inst
+
+[VirtioGpu_Inst.HW]
+AddReg = VirtioGpu_PCI_MSIX
+
+[VirtioGpu_Service_Inst]
+ServiceType = %SERVICE_KERNEL_DRIVER%
+StartType = %SERVICE_DEMAND_START%
+ErrorControl = %SERVICE_ERROR_IGNORE%
+ServiceBinary = %13%\virtio_wddm_rs.sys
+
+[VirtioGpu_EventLog_Inst]
+AddReg = VirtioGpu_EventLog_Inst.AddReg
+
+[VirtioGpu_EventLog_Inst.AddReg]
+HKR,,EventMessageFile,%REG_EXPAND_SZ%,"%%SystemRoot%%\System32\IoLogMsg.dll"
+HKR,,TypesSupported,%REG_DWORD%,7
+
+[VirtioGpu_DeviceSettings]
+HKR,, OpenGLDriverNameWow, %REG_SZ%, "%13%\droidvm_opengl_x86.dll"
+HKR,, VulkanDriverNameWow, %REG_SZ%, "%13%\freedreno_icd.x86.json"
+HKR,, UserModeDriverNameWow, %REG_MULTI_SZ%, <>,%13%\dx11um_virtio_x86.dll,%13%\dx11um_virtio_x86.dll,%13%\dx12um_virtio_x86.dll
+HKR,, OpenGLFlagsWow, %REG_DWORD%, 1
+HKR,, OpenGLVersionWow, %REG_DWORD%, 2
+HKR,, UserModeDriverName, %REG_MULTI_SZ%, <>,%13%\dx11um_virtio.dll,%13%\dx11um_virtio.dll,%13%\dx12um_virtio.dll
+HKR,, D3D12Enable, %REG_DWORD%, 1
+HKR,, D3D12FeatureLevelOverride, %REG_DWORD%, 0
+HKR,, VulkanDriverName, %REG_SZ%, "%13%\freedreno_icd.arm64x.json"
+HKR,, OpenGLDriverName, %REG_SZ%, "%13%\droidvm_opengl.dll"
+HKR,, OpenGLVersion, %REG_DWORD%, 2
+HKR,, OpenGLFlags, %REG_DWORD%, 1
+
+[VirtioGpu_PCI_MSIX]
+HKR, "Interrupt Management",, 0x00000010
+HKR, "Interrupt Management\MessageSignaledInterruptProperties",, 0x00000010
+HKR, "Interrupt Management\MessageSignaledInterruptProperties", MSISupported, 0x00010001, 0
+HKR, "Interrupt Management\MessageSignaledInterruptProperties", MessageNumberLimit, 0x00010001, 4
+
+[Strings]
+diskId1 = "VirtIO GPU controller Installation Disk"
+VirtioGpu.DeviceDesc = "VirtIO GPU 3D controller"
+ManufacturerName = "anonymix007"
+SERVICE_BOOT_START = 0x0
+SERVICE_SYSTEM_START = 0x1
+SERVICE_AUTO_START = 0x2
+SERVICE_DEMAND_START = 0x3
+SERVICE_DISABLED = 0x4
+SERVICE_KERNEL_DRIVER = 0x1
+SERVICE_ERROR_IGNORE = 0x0
+SERVICE_ERROR_NORMAL = 0x1
+SERVICE_ERROR_SEVERE = 0x2
+SERVICE_ERROR_CRITICAL = 0x3
+REG_SZ        = 0x00000000
+REG_MULTI_SZ  = 0x00010000
+REG_EXPAND_SZ = 0x00020000
+REG_DWORD     = 0x00010001
+
+

@@ -1,0 +1,68 @@
+﻿[diag] 09/25/2026 07:16:41 drive topology
+[diag] === Get-Volume ===
+
+
+DriveLetter     : D
+DriveType       : Fixed
+FileSystem      : NTFS
+FileSystemLabel : New Volume
+FreeGB          : 39.9
+SizeGB          : 40
+
+DriveLetter     : 
+DriveType       : Fixed
+FileSystem      : NTFS
+FileSystemLabel : 
+FreeGB          : 0.1
+SizeGB          : 0.6
+
+DriveLetter     : C
+DriveType       : Fixed
+FileSystem      : NTFS
+FileSystemLabel : Windows
+FreeGB          : 19.1
+SizeGB          : 39.1
+
+
+
+[diag] === Win32_LogicalDisk ===
+
+
+DeviceID    : C:
+DriveType   : 3
+Description : Local Fixed Disk
+FreeGB      : 19.1
+SizeGB      : 39.1
+
+DeviceID    : D:
+DriveType   : 3
+Description : Local Fixed Disk
+FreeGB      : 39.9
+SizeGB      : 40
+
+
+
+[diag] === Get-Disk ===
+
+
+Number            : 0
+FriendlyName      : Red Hat VirtIO
+OperationalStatus : Online
+BusType           : SCSI
+Location          : Integrated : Bus 0 : Device 3 : Function 0 : Adapter 0 : Po
+                    rt 0 : Target 0 : LUN 0
+
+
+
+[diag] === vds/vhdsvc/vhdmp ===
+
+Name   Status StartType
+----   ------ ---------
+vds   Running    Manual
+vhdmp Stopped    Manual
+
+
+[diag] D: WRITE_OK -> D:\__wt_24c02084c8ae4045addf105d691915f3.tmp
+[diag] === D:\新建文件夹 exists? False
+[diag] New-VHD: NO
+[diag] DONE

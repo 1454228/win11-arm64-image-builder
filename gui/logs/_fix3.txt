@@ -1,0 +1,8 @@
+
+=== state before ===
+qemu-img STILL running PIDs=9776
+ATTACHED Disk1 D:\droidvm_tmp\w11_20260919_103910_9744.vhdx OpStatus=Online
+=== diskpart detach ===
+=== state after ===
+STILL ATTACHED Disk1 D:\droidvm_tmp\w11_20260919_103910_9744.vhdx
+FIX3_DONE

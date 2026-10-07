@@ -1,0 +1,10 @@
+﻿=== raw diskpart output (create+attach) ===
+=== vhdx file exists after create? => False
+=== Get-Disk after attach ===
+
+Number FriendlyName   OperationalStatus Location                               
+------ ------------   ----------------- --------                               
+     0 Red Hat VirtIO Online            Integrated : Bus 0 : Device 3 : Func...
+
+
+DONE

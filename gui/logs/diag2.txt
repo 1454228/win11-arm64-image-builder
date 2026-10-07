@@ -1,0 +1,22 @@
+﻿--- all drives ---
+
+Name Root        Used        Free
+---- ----        ----        ----
+C    C:\  29562515456 12446580736
+D    D:\     88600576 42861068288
+
+
+
+--- find vhdx (C:) ---
+
+--- find vhdx (D:) ---
+
+--- build.ps1 location ---
+
+FullName                                                                                                        
+--------                                                                                                        
+C:\Users\USER\WorkBuddy\W11A64DVMB\gui\builder\windows\build.ps1                                                
+C:\Users\USER\WorkBuddy\W11A64DVMB\Windows-ARM64-DroidVM-Builder\Windows-ARM64-DroidVM-Builder\windows\build.ps1
+
+
+

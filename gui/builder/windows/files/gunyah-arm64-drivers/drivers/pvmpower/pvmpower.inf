@@ -1,0 +1,66 @@
+;
+; pvmpower.inf - Gunyah protected-VM power driver
+;
+; Binds to the root-enumerated ROOT\PVMPOWER device (created by the DroidVM
+; driver installer) and bridges Windows S5 shutdown/reboot onto PSCI
+; SYSTEM_OFF / SYSTEM_RESET. Inert when the platform is not a Gunyah pVM
+; (no rdmapool / ACPI\RDMA0000 present), e.g. under QEMU/KVM.
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider    = %ManufacturerName%
+CatalogFile = pvmpower.cat
+DriverVer = 08/26/2026,11.35.29.146
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+pvmpower.sys = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName% = Standard,NTARM64.10.0...16299
+
+[Standard.NTARM64.10.0...16299]
+%pvmpower.DeviceDesc% = pvmpower_Device, ROOT\PVMPOWER
+
+[pvmpower_Device.NT]
+CopyFiles = File_Copy
+
+[File_Copy]
+pvmpower.sys
+
+;-------------- Service installation
+[pvmpower_Device.NT.Services]
+AddService = pvmpower,%SPSVCINST_ASSOCSERVICE%, pvmpower_Service_Inst
+
+[pvmpower_Service_Inst]
+DisplayName    = %pvmpower.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START (loaded via the ROOT devnode at boot)
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\pvmpower.sys
+
+[pvmpower_Device.NT.Wdf]
+KmdfService = pvmpower, pvmpower_wdfsect
+
+[pvmpower_wdfsect]
+KmdfLibraryVersion = 1.15
+
+[Strings]
+SPSVCINST_ASSOCSERVICE = 0x00000002
+ManufacturerName = "Red Hat, Inc."
+DiskName = "Gunyah pVM Power Driver Installation Disk"
+pvmpower.DeviceDesc = "Gunyah pVM Power Manager"
+pvmpower.SVCDESC = "Gunyah pVM Power Service"

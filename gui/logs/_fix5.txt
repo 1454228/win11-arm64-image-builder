@@ -1,6 +1,0 @@
-
-=== current session admin? ===
-  IsAdmin=False  User=DROIDVM\USER
-=== attempt kill, capture exact error ===
-  FAILED PID=9776: ProcessCommandException: ??????????????qemu-img (9776)?: ?????
-FIX5_DONE

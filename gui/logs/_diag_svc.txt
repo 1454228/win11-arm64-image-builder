@@ -1,9 +1,0 @@
-﻿[diag] start
-[diag] FsDepends : Status=Stopped StartType=Manual
-[diag] vhdmp : Status=Running StartType=Manual
-[diag] vhdsvc : NOT FOUND
-[diag] vds : Status=Running StartType=Manual
-[diag] storsvc : Status=Running StartType=Automatic
-[diag] FsDepends reg Start = 3
-[diag] New-VHD: NO
-[diag] DONE

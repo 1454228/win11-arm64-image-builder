@@ -1,2 +1,0 @@
-﻿VHDX: w11_20260919_111825_3664.vhdx  size=7.1 GB  lastWrite=09/19/2026 11:29:36
-dism CPU(s)=191.7  WS=298 MB

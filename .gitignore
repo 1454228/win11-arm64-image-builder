@@ -14,6 +14,12 @@ wheels/
 # ===== 排除：GPU 驱动二进制包（约 160MB 专有 blob，走单独分发，不进仓库）=====
 gui/builder/windows/files/gpu-arm64-drivers/
 
+# ===== 排除：运行时日志 / pid / 本地配置（含凭据与本地路径，不进仓库）=====
+*.log
+*.pid
+gui/logs/
+gui/build_config.json
+
 # ===== Python 缓存 =====
 __pycache__/
 *.pyc

@@ -1,3 +1,0 @@
-PARSE_errors: 0
-PARSE_OK
-SYN6_DONE

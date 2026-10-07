@@ -11,6 +11,9 @@ shots/
 offline_bundle/
 wheels/
 
+# ===== 排除：GPU 驱动二进制包（约 160MB 专有 blob，走单独分发，不进仓库）=====
+gui/builder/windows/files/gpu-arm64-drivers/
+
 # ===== Python 缓存 =====
 __pycache__/
 *.pyc

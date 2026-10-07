@@ -1,8 +1,0 @@
-{
-  "ICD": {
-    "api_version": "1.4.358",
-    "library_arch": "32",
-    "library_path": ".\\vulkan_freedreno_x86.dll"
-  },
-  "file_format_version": "1.0.1"
-}

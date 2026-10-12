@@ -216,6 +216,30 @@ FIELDS = [
      "留空 = 自动使用宿主时区",
      "Empty = use host timezone"),
 
+    # TIME_SYNC_DISABLE：反向开关。build.ps1 约定「空=关 / 1=开」，故默认关=修复开启。
+    # 修复内容：离线写入 RealTimeIsUniversal=1（Windows 把虚拟机 RTC 当作 UTC，避免开机跳钟）
+    # 并将 w32time 指向公共 NTP，解决 Windows-on-Linux 虚拟机常见的时间不同步。
+    ("advanced", "TIME_SYNC_DISABLE", "bool", False, "TIME_SYNC_DISABLE",
+     "禁用时间同步修复",
+     "Disable time-sync fix",
+     "默认开启（RealTimeIsUniversal + NTP）；勾选则跳过该修复",
+     "Enabled by default (RealTimeIsUniversal + NTP); check to skip"),
+
+    # SHARED_DIR_AUTO：首次开机自动配置 VirtIO-FS 共享目录（驱动安装 + 服务延迟启动 + 挂载 Z:）。
+    # 对应资料库 说明.txt：下载 VirtIO-FS 驱动、services.msc 设「自动(延迟启动)」、net use Z: \\viosfs\a。
+    ("advanced", "SHARED_DIR_AUTO", "bool", True, "SHARED_DIR_AUTO",
+     "自动配置共享目录(VirtIO-FS)",
+     "Auto-configure shared dir (VirtIO-FS)",
+     "首次开机自动：安装驱动(若提供)、VirtIO-FS 服务设为延迟启动、挂载 Z:",
+     "First boot: install driver (if provided), set VirtIO-FS service delayed-auto, mount Z:"),
+    # VIRTIOFS_DRIVER：用户提供的 VirtIO-FS 驱动包路径（资料库 说明.txt 里的下载链接）。
+    # 留空 = 仅配置服务与挂载（假设驱动已在内）。构建期解压/复制到镜像 C:\DroidVM\virtiofs\。
+    ("advanced", "VIRTIOFS_DRIVER", "file", "", "VIRTIOFS_DRIVER",
+     "VirtIO-FS 驱动包(可选)",
+     "VirtIO-FS driver pkg (optional)",
+     "指向资料库说明.txt 的 VirtIO-FS 驱动压缩包；留空则仅配置服务与挂载",
+     "Path to VirtIO-FS driver archive from the library doc; empty = service+mount only"),
+
     ("advanced", "OPENSSH_SRC", "file", "", "OPENSSH_SRC",
      "OpenSSH 安装包",
      "OpenSSH package",

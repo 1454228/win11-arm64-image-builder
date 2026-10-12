@@ -3,9 +3,24 @@
 基于 [Droid-VM/win11-arm64-image-builder](https://github.com/Droid-VM/win11-arm64-image-builder) fork 的 Win11/ARM64 镜像构建工具。
 GUI：`gui/fluent_gui.py`（PySide6 + PyQt-Fluent-Widgets）；构建引擎：`gui/builder/windows/build.ps1`；调度：`run_build.py`（UAC 提权）+ `schema.py`（环境变量归一化）。
 
-所有 `.ps1` 文件均为 UTF-8 with BOM。当前最新版本：**v3.10**。
+所有 `.ps1` 文件均为 UTF-8 with BOM。当前最新版本：**v3.11**。
 
 ---
+
+## v3.11（2026-10-15）— 资料库说明.txt 落地：时间同步修复 + 共享目录(VirtIO-FS)自动配置
+
+**时间同步修复（build.ps1，离线注册表块，默认开启）**
+- 离线写入 `RealTimeIsUniversal=1`：Windows 把虚拟机 RTC 视为 UTC，避免开机跳钟（Windows-on-Linux VM 时间不对的常见根因）。
+- w32time 指向公共 NTP（time.windows.com,0x9）并设为开机自启。
+- 高级页新增反向开关「禁用时间同步修复」（`TIME_SYNC_DISABLE`，默认关=修复开启）。
+
+**共享目录自动配置（VirtIO-FS，对应资料库说明.txt，默认开启）**
+- 新增选项「自动配置共享目录(VirtIO-FS)」（`SHARED_DIR_AUTO`，默认开）与「VirtIO-FS 驱动包(可选)」（`VIRTIOFS_DRIVER`）。
+- 构建期：开启时把 `setup-virtiofs.ps1` 暂存进镜像；提供驱动包则解压/复制到 `C:\DroidVM\virtiofs\`。
+- 首次登录由 unattend.xml（Order 11，`if exist` 守卫）执行：安装 VirtIO-FS 驱动（若提供）、将「VirtIO-FS Service」设延迟启动并拉起、持久挂载 `Z: -> \\viosfs\a`。
+- 文档里「下载驱动 / services.msc 设自动(延迟启动) / net use Z: \\viosfs\a」三步自动化；驱动二进制由用户经 `VIRTIOFS_DRIVER` 提供（不进仓库）。
+
+**校验**：py_compile 通过；unattend.xml XML 合法；schema 9 元组一致；.ps1 为 UTF-8 BOM。PS/首启脚本未实机运行，需真机验证。
 
 ## v3.10（2026-10-07）— 热修：VMS_JSON 被路径归一化破坏，vmpkg 打包报「无法识别的转义序列」
 

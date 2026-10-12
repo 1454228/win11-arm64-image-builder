@@ -194,6 +194,12 @@ _LANGS = {
         "VMPKG_EXTRA": "crosvm 额外参数（每行一条）",
         "VMPKG_ENVVARS": "环境变量（每行 KEY=VALUE）",
         "VMPKG_SHARED": "共享目录（每行 标签=路径）",
+        "VMPKG_SHARED_HELP": (
+            "导入 .vmpkg 后，在 DroidVM App「编辑虚拟机 → 存储 → 添加共享目录」：\n"
+            "宿主路径自定，标签写短（默认 a）。VirtIO-FS 选项：回写开启 / DAX 关闭 / POSIX ACL 开启 / Root 按需。\n"
+            "首次需下载 VirtIO-FS 驱动；Win+R 运行 services.msc，将「VirtIO-FS Service」启动类型设为「自动(延迟启动)」；\n"
+            "管理员 CMD 执行：net use Z: \\\\viosfs\\a 挂载（开机约 120 秒后自动生效）。"
+        ),
     },
     "en-US": {
         "APP_TITLE": "DroidVM Win11 ARM64 Image Builder",
@@ -380,6 +386,12 @@ _LANGS = {
         "VMPKG_EXTRA": "Extra crosvm args (one per line)",
         "VMPKG_ENVVARS": "Environment variables (KEY=VALUE per line)",
         "VMPKG_SHARED": "Shared dirs (tag=path per line)",
+        "VMPKG_SHARED_HELP": (
+            "After importing the .vmpkg, in DroidVM App go to 'Edit VM -> Storage -> Add shared dir':\n"
+            "host path is free; use a short tag (default 'a'). VirtIO-FS options: writability on / DAX off / POSIX ACL on / Root as needed.\n"
+            "First time: download the VirtIO-FS driver; Win+R -> services.msc, set 'VirtIO-FS Service' start type to 'Automatic (Delayed Start)'.\n"
+            "Admin CMD: net use Z: \\\\viosfs\\a to mount (auto-available ~120s after boot)."
+        ),
     },
 }
 

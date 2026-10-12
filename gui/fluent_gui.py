@@ -414,6 +414,9 @@ class MainWindow(FluentWindow):
         blk, fl = self._vsection(T("SECTION_ADVANCED"))
         fl.addWidget(self._field_row("OPENSSH_SRC", browse="file", minw=360))
         fl.addWidget(self._field_row("TARGET_TIMEZONE"))
+        fl.addWidget(self._switch_row("TIME_SYNC_DISABLE"))
+        fl.addWidget(self._switch_row("SHARED_DIR_AUTO"))
+        fl.addWidget(self._field_row("VIRTIOFS_DRIVER", browse="file", minw=360))
         fl.addWidget(self._field_row("SSH_PUBKEY", multiline=True, minw=360))
         cv.addWidget(blk)
 
@@ -790,6 +793,7 @@ class MainWindow(FluentWindow):
         vb.addWidget(self._vfield("VMPKG_ENVVARS", self.vmpkg_envv))
         self.vmpkg_shared = self._edit_ctrl("VMPKG_SHARED", "")
         vb.addWidget(self._vfield("VMPKG_SHARED", self.vmpkg_shared))
+        vb.addWidget(BodyLabel(T("VMPKG_SHARED_HELP")))
         cv.addWidget(blk)
 
         sa.setWidget(c)

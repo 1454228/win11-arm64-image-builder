@@ -517,6 +517,11 @@ $DRIVER_DIR     = if ($env:DRIVER_DIR)     { $env:DRIVER_DIR }     else { "ZIP\d
 $DRIVER_INSTALL = if ($env:DRIVER_INSTALL) { $env:DRIVER_INSTALL } else { "" }
 $DRIVER_CERT    = if ($env:DRIVER_CERT)    { $env:DRIVER_CERT -replace '/', '\' } else { "" }
 $DEBLOAT        = if ($env:DEBLOAT)        { $env:DEBLOAT }        else { "" }
+# 时间同步修复开关：空=开启（默认），"1"=跳过。修复内容见离线注册表块。
+$TIME_SYNC_DISABLE = if ($env:TIME_SYNC_DISABLE) { $env:TIME_SYNC_DISABLE } else { "" }
+# 共享目录自动配置（VirtIO-FS）：SHARED_DIR_AUTO 非空即开启；VIRTIOFS_DRIVER 为可选驱动包路径。
+$SHARED_DIR_AUTO = if ($env:SHARED_DIR_AUTO) { $env:SHARED_DIR_AUTO } else { "" }
+$VIRTIOFS_DRIVER = if ($env:VIRTIOFS_DRIVER) { $env:VIRTIOFS_DRIVER -replace '/', '\' } else { "" }
 
 # GPU driver config (independent from Gunyah/VirtIO)
 # GPU_DRIVERS 为空或 "0" 时跳过；GPU_DRIVERS_DIR 缺省指向内置驱动包（与 gunyah 解耦，单独一份）。
@@ -590,6 +595,8 @@ Write-Host "[config] DiskSize=$DISK_MB MB"
 Write-Host "[config] Drivers=$(if ($DRIVERS_DIR) { $DRIVERS_DIR } else { '(none)' })"
 Write-Host "[config] Compress=$(if ($COMPRESS) { 'yes' } else { 'no' })"
 Write-Host "[config] Debloat=$(if ($DEBLOAT) { 'yes' } else { 'no (保留原版)' })"
+Write-Host "[config] TimeSyncFix=$(if ($TIME_SYNC_DISABLE -ne '1') { 'yes (RealTimeIsUniversal + NTP)' } else { 'disabled' })"
+Write-Host "[config] SharedDirAuto=$(if ($SHARED_DIR_AUTO) { 'yes (VirtIO-FS)' } else { 'no' })"
 Write-Host "[disk] drive letters: ESP=$LETTER_ESP Windows=$LETTER_WIN"
 Write-Host ""
 
@@ -1324,6 +1331,18 @@ exit
                 reg add $tzInfo /v TimeZoneKeyName /t REG_SZ /d "$timezone" /f *> $null
                 reg add $tzInfo /v ActiveTimeBias /t REG_DWORD /d 0 /f *> $null
                 reg add $tzInfo /v Bias /t REG_DWORD /d 0 /f *> $null
+                # 时间同步修复（默认开启；勾选 TIME_SYNC_DISABLE 则跳过）
+                # RealTimeIsUniversal=1：让 Windows 把虚拟机 RTC 视为 UTC，避免开机跳钟——
+                # 这是 Windows-on-Linux 虚拟机时间不对的最常见根因。
+                if ($TIME_SYNC_DISABLE -ne "1") {
+                    reg add $tzInfo /v RealTimeIsUniversal /t REG_DWORD /d 1 /f *> $null
+                    $w32 = "HKLM\DVMOFF\$cs\Services\W32Time\"
+                    reg add "$($w32)Parameters" /v NtpServer /t REG_SZ /d "time.windows.com,0x9" /f *> $null
+                    reg add "$($w32)Config" /v AnnounceFlags /t REG_DWORD /d 5 /f *> $null
+                    reg add "$($w32)TimeProviders\NtpClient" /v SpecialPollInterval /t REG_DWORD /d 3600 /f *> $null
+                    # 确保 w32time 服务开机自启（触发器启动在部分镜像默认未启用）
+                    reg add "$($w32)" /v Start /t REG_DWORD /d 2 /f *> $null
+                }
             }
         }
     } catch {
@@ -1405,6 +1424,30 @@ exit
     if ($drvDir) {
         $pvmDevnode = Join-Path $zipRoot "pvmpower-devnode.ps1"
         if (Test-Path $pvmDevnode) { Copy-Item $pvmDevnode "$stage\pvmpower-devnode.ps1" -Force; Write-Host "[pvmpower] staged pvmpower-devnode.ps1" }
+    }
+
+    # === 8d) Stage VirtIO-FS shared-dir auto-config (first-boot) ===
+    if ($SHARED_DIR_AUTO) {
+        $vfScript = Join-Path $HERE "setup-virtiofs.ps1"
+        if (Test-Path $vfScript) {
+            Copy-Item $vfScript "$stage\setup-virtiofs.ps1" -Force
+            Write-Host "[virtiofs] staged setup-virtiofs.ps1"
+            if ($VIRTIOFS_DRIVER) {
+                $vfDest = "$W\DroidVM\virtiofs"
+                New-Item -ItemType Directory -Force $vfDest | Out-Null
+                if ($VIRTIOFS_DRIVER -match '\.zip$') {
+                    Expand-Archive -Path $VIRTIOFS_DRIVER -DestinationPath $vfDest -Force
+                    Write-Host "[virtiofs] extracted driver package -> $vfDest"
+                } elseif (Test-Path $VIRTIOFS_DRIVER) {
+                    Copy-Item (Join-Path $VIRTIOFS_DRIVER '*') $vfDest -Recurse -Force
+                    Write-Host "[virtiofs] copied driver package -> $vfDest"
+                } else {
+                    Write-Host "[virtiofs] driver path not found: $VIRTIOFS_DRIVER" -ForegroundColor DarkYellow
+                }
+            }
+        } else {
+            Write-Host "[virtiofs] setup-virtiofs.ps1 未找到，跳过" -ForegroundColor DarkYellow
+        }
     }
 
     if ($OPENSSH_SRC) {

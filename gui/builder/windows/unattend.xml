@@ -143,6 +143,12 @@
      <Description>power: never sleep / never turn off display</Description>
      <CommandLine>cmd /c powercfg /change standby-timeout-ac 0 &amp; powercfg /change standby-timeout-dc 0 &amp; powercfg /change monitor-timeout-ac 0 &amp; powercfg /change monitor-timeout-dc 0</CommandLine>
     </SynchronousCommand>
+    <!-- 9. VirtIO-FS 共享目录自动配置（若已暂存脚本则执行；否则自动跳过） -->
+    <SynchronousCommand wcm:action="add">
+     <Order>11</Order>
+     <Description>VirtIO-FS shared dir auto-config</Description>
+     <CommandLine>cmd /c if exist C:\DroidVM\setup-virtiofs.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File C:\DroidVM\setup-virtiofs.ps1</CommandLine>
+    </SynchronousCommand>
    </FirstLogonCommands>
   </component>
   <!-- 注意：不包含 Microsoft-Windows-International-Core，保持镜像原语言不被覆盖 -->

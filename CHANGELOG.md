@@ -19,6 +19,7 @@ GUI：`gui/fluent_gui.py`（PySide6 + PyQt-Fluent-Widgets）；构建引擎：`g
 - 构建期：开启时把 `setup-virtiofs.ps1` 暂存进镜像；提供驱动包则解压/复制到 `C:\DroidVM\virtiofs\`。
 - 首次登录由 unattend.xml（Order 11，`if exist` 守卫）执行：安装 VirtIO-FS 驱动（若提供）、将「VirtIO-FS Service」设延迟启动并拉起、持久挂载 `Z: -> \\viosfs\a`。
 - 文档里「下载驱动 / services.msc 设自动(延迟启动) / net use Z: \\viosfs\a」三步自动化；驱动二进制由用户经 `VIRTIOFS_DRIVER` 提供（不进仓库）。
+- GUI 共享目录帮助框已写入资料库说明.txt 的完整步骤（App 侧 Edit→Storage→添加共享目录、标签 a、回写开/DAX 关/POSIX ACL 开/Root 按需），并附三个驱动下载链接（百度/夸克/123 云盘，文件相同）与「自动(延迟启动) 默认 120 秒、net use Z: \\viosfs\a 后每次开机约 120 秒自动挂载」说明。
 
 **校验**：py_compile 通过；unattend.xml XML 合法；schema 9 元组一致；.ps1 为 UTF-8 BOM。PS/首启脚本未实机运行，需真机验证。
 

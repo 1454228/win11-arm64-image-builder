@@ -522,6 +522,11 @@ $TIME_SYNC_DISABLE = if ($env:TIME_SYNC_DISABLE) { $env:TIME_SYNC_DISABLE } else
 # 共享目录自动配置（VirtIO-FS）：SHARED_DIR_AUTO 非空即开启；VIRTIOFS_DRIVER 为可选驱动包路径。
 $SHARED_DIR_AUTO = if ($env:SHARED_DIR_AUTO) { $env:SHARED_DIR_AUTO } else { "" }
 $VIRTIOFS_DRIVER = if ($env:VIRTIOFS_DRIVER) { $env:VIRTIOFS_DRIVER -replace '/', '\' } else { "" }
+# 默认驱动包：开启共享目录自动配置且用户未指定时，使用仓库内置的 VirtIO-FS 驱动（files\virtiofs\virtiofs-drivers.zip）
+if ($SHARED_DIR_AUTO -and -not $VIRTIOFS_DRIVER) {
+    $bundled = Join-Path $HERE "files\virtiofs\virtiofs-drivers.zip"
+    if (Test-Path $bundled) { $VIRTIOFS_DRIVER = $bundled; Write-Host "[virtiofs] using bundled driver package: $bundled" }
+}
 
 # GPU driver config (independent from Gunyah/VirtIO)
 # GPU_DRIVERS 为空或 "0" 时跳过；GPU_DRIVERS_DIR 缺省指向内置驱动包（与 gunyah 解耦，单独一份）。

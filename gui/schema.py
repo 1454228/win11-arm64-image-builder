@@ -237,8 +237,8 @@ FIELDS = [
     ("advanced", "VIRTIOFS_DRIVER", "file", "", "VIRTIOFS_DRIVER",
      "VirtIO-FS 驱动包(可选)",
      "VirtIO-FS driver pkg (optional)",
-     "指向资料库说明.txt 的 VirtIO-FS 驱动压缩包；留空则仅配置服务与挂载",
-     "Path to VirtIO-FS driver archive from the library doc; empty = service+mount only"),
+     "留空=使用内置 VirtIO-FS 驱动包(files/virtiofs)；也可填自定义驱动压缩包",
+     "Empty = use bundled driver (files/virtiofs); or a custom driver archive"),
 
     ("advanced", "OPENSSH_SRC", "file", "", "OPENSSH_SRC",
      "OpenSSH 安装包",

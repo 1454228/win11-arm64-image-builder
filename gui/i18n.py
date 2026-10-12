@@ -198,14 +198,12 @@ _LANGS = {
             "共享目录配置（资料库 说明.txt）：\n"
             "1) DroidVM App：编辑虚拟机 → 存储 → 添加共享目录。宿主路径自定，标签写短（默认 a）。\n"
             "   VirtIO-FS 选项：回写开启 / DAX 关闭 / POSIX ACL 开启 / Root 按需开启。\n"
-            "2) 下载 VirtIO-FS 驱动（三选一，文件相同）：\n"
-            "   百度网盘：https://pan.baidu.com/s/1HnINamz1yyeRHdDyOFclMw?pwd=9bj5\n"
-            "   夸克网盘：https://pan.quark.cn/s/83562861410c\n"
-            "   123 云盘：https://1817218852.share.123pan.cn/123pan/nriVVv-NZ0hh?pwd=htbA#\n"
+            "2) VirtIO-FS 驱动已随程序内置（仓库 files/virtiofs/virtiofs-drivers.zip）；勾选「自动配置共享目录(VirtIO-FS)」后默认自动安装，无需单独下载。\n"
+            "   备用网盘（文件相同）：百度 https://pan.baidu.com/s/1HnINamz1yyeRHdDyOFclMw?pwd=9bj5 ｜ 夸克 https://pan.quark.cn/s/83562861410c ｜ 123云盘 https://1817218852.share.123pan.cn/123pan/nriVVv-NZ0hh?pwd=htbA#\n"
             "3) Win+R 运行 services.msc → 找到「VirtIO-FS Service」→ 属性 → 常规 →\n"
             "   启动类型设为「自动(延迟启动)」（延迟默认 120 秒）。\n"
             "4) 管理员 CMD 执行：net use Z: \\\\viosfs\\a。之后每次开机约 120 秒后自动挂载。\n"
-            "勾选「自动配置共享目录(VirtIO-FS)」并在「VirtIO-FS 驱动包」填入驱动后，构建会在首次开机自动完成 3、4 步。"
+            "（开启自动配置且未自定义驱动包时，构建会在首次开机自动完成 3、4 步；若手动安装驱动，3、4 也需手动执行。）"
         ),
     },
     "en-US": {
@@ -397,14 +395,12 @@ _LANGS = {
             "Shared dir setup (library 说明.txt):\n"
             "1) DroidVM App: Edit VM -> Storage -> Add shared dir. Host path free; use a short tag (default 'a').\n"
             "   VirtIO-FS options: writability on / DAX off / POSIX ACL on / Root as needed.\n"
-            "2) Download the VirtIO-FS driver (pick one; files are identical):\n"
-            "   Baidu: https://pan.baidu.com/s/1HnINamz1yyeRHdDyOFclMw?pwd=9bj5\n"
-            "   Quark: https://pan.quark.cn/s/83562861410c\n"
-            "   123Pan: https://1817218852.share.123pan.cn/123pan/nriVVv-NZ0hh?pwd=htbA#\n"
+            "2) VirtIO-FS driver is bundled with the tool (repo files/virtiofs/virtiofs-drivers.zip); with 'Auto-configure shared dir' on it auto-installs by default, no download needed.\n"
+            "   Fallback mirrors (identical file): Baidu https://pan.baidu.com/s/1HnINamz1yyeRHdDyOFclMw?pwd=9bj5 | Quark https://pan.quark.cn/s/83562861410c | 123Pan https://1817218852.share.123pan.cn/123pan/nriVVv-NZ0hh?pwd=htbA#\n"
             "3) Win+R -> services.msc -> 'VirtIO-FS Service' -> Properties -> General ->\n"
             "   Startup type = 'Automatic (Delayed Start)' (default delay 120s).\n"
             "4) Admin CMD: net use Z: \\\\viosfs\\a. After that it auto-mounts ~120s after every boot.\n"
-            "Enable 'Auto-configure shared dir (VirtIO-FS)' and set the driver pkg to auto-run steps 3-4 on first boot."
+            "(With auto-config on and no custom driver, the build auto-runs steps 3-4 on first boot; if you install the driver manually, do 3-4 manually too.)"
         ),
     },
 }

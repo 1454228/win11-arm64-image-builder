@@ -21,6 +21,10 @@ GUI：`gui/fluent_gui.py`（PySide6 + PyQt-Fluent-Widgets）；构建引擎：`g
 - 文档里「下载驱动 / services.msc 设自动(延迟启动) / net use Z: \\viosfs\a」三步自动化；驱动二进制由用户经 `VIRTIOFS_DRIVER` 提供（不进仓库）。
 - GUI 共享目录帮助框已写入资料库说明.txt 的完整步骤（App 侧 Edit→Storage→添加共享目录、标签 a、回写开/DAX 关/POSIX ACL 开/Root 按需），并附三个驱动下载链接（百度/夸克/123 云盘，文件相同）与「自动(延迟启动) 默认 120 秒、net use Z: \\viosfs\a 后每次开机约 120 秒自动挂载」说明。
 
+**内置 VirtIO-FS 驱动包（随程序分发，进 GitHub）**
+- 将用户提供的 `共享目录.zip`（含 `virtio-win-guest-tools.exe` + `winfsp-2.2.26215.msi`，约 33MB）以 `gui/builder/windows/files/virtiofs/virtiofs-drivers.zip` 随仓库提交（`.gitignore` 对该文件加例外）。
+- 开启「自动配置共享目录(VirtIO-FS)」且未自定义驱动包时，`build.ps1` 默认使用该内置包；`setup-virtiofs.ps1` 首次登录静默安装 WinFsp → VirtIO 客户机工具（WiX Burn `/quiet /norestart`）→ 设服务延迟启动 → 挂载 `Z:`，无需群友单独下载。
+
 **校验**：py_compile 通过；unattend.xml XML 合法；schema 9 元组一致；.ps1 为 UTF-8 BOM。PS/首启脚本未实机运行，需真机验证。
 
 ## v3.10（2026-10-07）— 热修：VMS_JSON 被路径归一化破坏，vmpkg 打包报「无法识别的转义序列」

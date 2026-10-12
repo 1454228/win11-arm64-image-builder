@@ -11,6 +11,9 @@ shots/
 offline_bundle/
 wheels/
 
+# 例外：随程序分发的 VirtIO-FS 共享目录驱动包（用户提供的 共享目录.zip，约 33MB，已内置）
+!gui/builder/windows/files/virtiofs/virtiofs-drivers.zip
+
 # ===== 排除：GPU 驱动二进制包（约 160MB 专有 blob，走单独分发，不进仓库）=====
 gui/builder/windows/files/gpu-arm64-drivers/
 
